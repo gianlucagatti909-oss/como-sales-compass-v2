@@ -9,7 +9,25 @@ const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function parseNumber(val: string | undefined | null): number {
   if (!val || val.trim() === "") return 0;
-  const n = parseFloat(val.replace(",", "."));
+  // Remove €, spaces, and quotes
+  let cleaned = val.replace(/[€\s"']/g, "").trim();
+  if (!cleaned) return 0;
+  // Detect Italian format: dots as thousands, comma as decimal (e.g. "1.234,56")
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    // If comma comes after the last dot → Italian format: remove dots, replace comma
+    const lastDot = cleaned.lastIndexOf(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    if (lastComma > lastDot) {
+      cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    } else {
+      // dots after comma → unlikely, but treat comma as thousands
+      cleaned = cleaned.replace(/,/g, "");
+    }
+  } else if (cleaned.includes(",")) {
+    // Only comma → decimal separator
+    cleaned = cleaned.replace(",", ".");
+  }
+  const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
 
