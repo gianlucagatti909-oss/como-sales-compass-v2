@@ -30,10 +30,17 @@ export interface DashboardStore {
   months: MonthData[];
 }
 
+export interface SkippedRow {
+  line: number;
+  reason: string;
+}
+
 export interface CSVParseResult {
   records: TPRecord[];
   skippedRows: number;
+  skippedDetails: SkippedRow[];
   errors: string[];
   mese: string | null;
   hasGiacenza: boolean;
+  totalFatturato: number;
 }
