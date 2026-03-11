@@ -22,9 +22,9 @@ export default function TPListPage({ records, hasGiacenza }: Props) {
 
   if (records.length === 0) return <EmptyState />;
 
-  const rappresentanti = [...new Set(records.map(r => r.rappresentante))].sort();
-  const zone = [...new Set(records.map(r => r.tp_zona))].sort();
-  const tipi = [...new Set(records.map(r => r.tp_tipo))].sort();
+  const rappresentanti = [...new Set(records.map(r => r.rappresentante).filter(Boolean))].sort();
+  const zone = [...new Set(records.map(r => r.tp_zona).filter(Boolean))].sort();
+  const tipi = [...new Set(records.map(r => r.tp_tipo).filter(Boolean))].sort();
 
   const filtered = records.filter(r => {
     if (search && !r.tp_nome.toLowerCase().includes(search.toLowerCase()) && !r.tp_id.toLowerCase().includes(search.toLowerCase())) return false;
