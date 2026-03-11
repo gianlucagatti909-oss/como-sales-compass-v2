@@ -46,6 +46,8 @@ export default function RappresentantiPage({ records, hasGiacenza }: Props) {
     }).sort((a, b) => b.fatturato - a.fatturato);
   }, [records, hasGiacenza]);
 
+  if (records.length === 0) return <EmptyState />;
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-bold">Confronto Rappresentanti</h2>

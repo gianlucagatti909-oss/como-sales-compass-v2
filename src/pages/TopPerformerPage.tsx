@@ -27,6 +27,8 @@ export default function TopPerformerPage({ records, hasGiacenza }: Props) {
     return new Set(topSTR.filter(r => fatSet.has(r.tp_id)).map(r => r.tp_id));
   }, [topFatturato, topSTR, hasGiacenza]);
 
+  if (records.length === 0) return <EmptyState />;
+
   const renderTable = (items: TPWithMetrics[], type: "fatturato" | "str") => (
     <div className="glass-card overflow-hidden">
       <div className="overflow-x-auto">
