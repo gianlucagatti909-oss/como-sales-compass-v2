@@ -11,8 +11,6 @@ interface Props {
 }
 
 export default function TopPerformerPage({ records, hasGiacenza }: Props) {
-  if (records.length === 0) return <EmptyState />;
-
   const topFatturato = useMemo(() =>
     [...records].sort((a, b) => b.venduto_euro - a.venduto_euro).slice(0, 10),
   [records]);

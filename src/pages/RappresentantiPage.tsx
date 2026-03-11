@@ -21,9 +21,8 @@ interface RappStats {
 }
 
 export default function RappresentantiPage({ records, hasGiacenza }: Props) {
-  if (records.length === 0) return <EmptyState />;
-
   const stats = useMemo(() => {
+    if (records.length === 0) return [];
     const map = new Map<string, TPWithMetrics[]>();
     records.forEach(r => {
       if (!map.has(r.rappresentante)) map.set(r.rappresentante, []);

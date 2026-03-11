@@ -13,21 +13,10 @@ interface Props {
 }
 
 export default function PrioritaPage({ records, hasGiacenza, selectedMonth }: Props) {
-  if (!hasGiacenza) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 text-center">
-        <div className="text-4xl">⚠️</div>
-        <h2 className="text-lg font-bold">Vista non disponibile</h2>
-        <p className="text-sm text-muted-foreground max-w-md">
-          La lista priorità interventi richiede il campo <code className="font-mono bg-muted px-1 py-0.5 rounded text-xs">giacenza_pezzi</code> nel CSV.
-        </p>
-      </div>
-    );
-  }
-
   const allMonths = getAllMonthsData();
 
   const priorityList = useMemo(() => {
+    if (!hasGiacenza) return [];
     const catC = records.filter(r => r.categoria === "C");
     return catC.map(r => {
       const bestMonth = allMonths.reduce<{ mese: string; fatturato: number }>((best, m) => {
