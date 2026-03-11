@@ -7,12 +7,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
 
+interface UploadResult {
+  success: boolean;
+  message: string;
+  needsConfirm?: boolean;
+  mese?: string;
+  summary?: string;
+}
+
 interface LayoutProps {
   children: ReactNode;
   selectedMonth: string;
   availableMonths: string[];
   onMonthChange: (m: string) => void;
-  onUpload: (csv: string) => { success: boolean; message: string; needsConfirm?: boolean; mese?: string };
+  onUpload: (csv: string) => UploadResult;
   onConfirmUpload: (csv: string) => void;
   hasGiacenza: boolean;
   onReset: () => void;
@@ -26,6 +34,27 @@ const navItems = [
   { path: "/top-performer", label: "Top Performer", icon: Trophy },
 ];
 
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      // Check for replacement characters (encoding issue)
+      if (text.includes('\uFFFD')) {
+        // Retry with Latin-1
+        const reader2 = new FileReader();
+        reader2.onload = (ev2) => {
+          resolve(ev2.target?.result as string);
+        };
+        reader2.readAsText(file, 'iso-8859-1');
+      } else {
+        resolve(text);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
 export default function Layout({
   children, selectedMonth, availableMonths, onMonthChange,
   onUpload, onConfirmUpload, hasGiacenza, onReset
@@ -36,23 +65,22 @@ export default function Layout({
   const [pendingCsv, setPendingCsv] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const result = onUpload(text);
-      if (result.needsConfirm) {
-        setPendingCsv(text);
-        setConfirmDialog(true);
-      } else if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
+    const text = await readFileAsText(file);
+    const result = onUpload(text);
+    if (result.needsConfirm) {
+      setPendingCsv(text);
+      setConfirmDialog(true);
+    } else if (result.success) {
+      toast.success(result.message);
+      if (result.summary) {
+        toast.info(result.summary, { duration: 8000 });
       }
-    };
-    reader.readAsText(file);
+    } else {
+      toast.error(result.message);
+    }
     if (fileRef.current) fileRef.current.value = "";
   }, [onUpload]);
 

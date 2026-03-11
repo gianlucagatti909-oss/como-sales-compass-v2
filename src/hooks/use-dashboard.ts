@@ -4,6 +4,10 @@ import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, 
 import { enrichRecords } from "@/lib/calculations";
 import { parseCSV } from "@/lib/csv-parser";
 
+function formatEuro(n: number): string {
+  return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function useDashboard() {
   const [store, setStore] = useState<DashboardStore>(loadStore);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -15,7 +19,7 @@ export function useDashboard() {
     setStore(loadStore());
   }, []);
 
-  const uploadCSV = useCallback((csvText: string): { success: boolean; message: string; needsConfirm?: boolean; mese?: string } => {
+  const uploadCSV = useCallback((csvText: string): { success: boolean; message: string; needsConfirm?: boolean; mese?: string; summary?: string } => {
     const result = parseCSV(csvText);
     if (result.errors.length > 0) {
       return { success: false, message: result.errors.join("; ") };
@@ -29,10 +33,18 @@ export function useDashboard() {
     const newStore = addMonth(result.records, result.hasGiacenza);
     setStore(newStore);
     setSelectedMonth(result.mese!);
-    const msg = result.skippedRows > 0
-      ? `Caricamento completato. ${result.skippedRows} righe ignorate per formato mese non valido o mancante.`
-      : "Caricamento completato con successo.";
-    return { success: true, message: msg };
+
+    const skippedInfo = result.skippedRows > 0
+      ? ` ${result.skippedRows} righe ignorate.`
+      : "";
+    const message = `Caricamento completato.${skippedInfo}`;
+    const summary = `${result.records.length} TP caricati · Fatturato totale importato: €${formatEuro(result.totalFatturato)}`;
+
+    if (result.skippedDetails.length > 0) {
+      console.warn("Righe scartate:", result.skippedDetails);
+    }
+
+    return { success: true, message, summary };
   }, []);
 
   const confirmUpload = useCallback((csvText: string) => {
