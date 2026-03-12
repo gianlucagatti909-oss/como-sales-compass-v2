@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { TPWithMetrics, MonthData } from "@/types/dashboard";
-import { formatCurrency, formatPercent, formatMonth, enrichRecords, calcSTR } from "@/lib/calculations";
+import { TPWithMetrics } from "@/types/dashboard";
+import { formatCurrency, formatPercent, formatMonth, enrichRecords } from "@/lib/calculations";
 import { getAllMonthsData, getPreviousMonth } from "@/lib/store";
 import EmptyState from "@/components/EmptyState";
 import { DollarSign, Store, TrendingDown, Percent, Package, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
