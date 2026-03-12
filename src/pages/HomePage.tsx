@@ -123,38 +123,6 @@ export default function HomePage({ records, hasGiacenza, selectedMonth }: Props)
     { name: "C — Dormiente", value: records.filter(r => r.categoria === "C").length, fill: "hsl(0, 65%, 55%)" },
   ] : [];
 
-  // Revenue trend (all months)
-  const trendData = useMemo(() => allMonths.map(m => {
-    const fat = m.records.reduce((s, r) => s + r.venduto_euro, 0);
-    const pezzi = m.records.reduce((s, r) => s + r.venduto_pezzi, 0);
-    return { mese: formatMonth(m.mese), fatturato: fat, pezzi };
-  }), [allMonths]);
-
-  // STR trend (last 6 months) - only if hasGiacenza
-  const strTrendData = useMemo(() => {
-    if (!hasGiacenza) return [];
-    const last6 = allMonths.slice(-6);
-    return last6.map((m, idx) => {
-      const prev = idx > 0 ? last6[idx - 1] : undefined;
-      const enriched = enrichRecords(m, prev);
-      const strs = enriched.filter(r => r.str !== null).map(r => r.str!);
-      const avgStr = strs.length > 0 ? strs.reduce((a, b) => a + b, 0) / strs.length : 0;
-      return { mese: formatMonth(m.mese), str: parseFloat(avgStr.toFixed(1)) };
-    });
-  }, [allMonths, hasGiacenza]);
-
-  // Top 10 TP by revenue for bar chart
-  const top10TP = useMemo(() => {
-    return [...records]
-      .sort((a, b) => b.venduto_euro - a.venduto_euro)
-      .slice(0, 10)
-      .map(r => ({
-        nome: r.tp_nome.length > 18 ? r.tp_nome.slice(0, 16) + "…" : r.tp_nome,
-        fullName: r.tp_nome,
-        fatturato: r.venduto_euro,
-        id: r.tp_id,
-      }));
-  }, [records]);
 
   return (
     <div className="space-y-6">
