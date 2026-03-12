@@ -27,7 +27,7 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { path: "/", label: "Panoramica", icon: LayoutDashboard },
+  { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/touchpoints", label: "Touchpoint", icon: Store },
   { path: "/rappresentanti", label: "Rappresentanti", icon: Users },
   { path: "/priorita", label: "Priorità", icon: AlertTriangle },
