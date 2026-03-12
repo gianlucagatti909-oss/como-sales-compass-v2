@@ -17,7 +17,7 @@ const queryClient = new QueryClient();
 function DashboardApp() {
   const {
     selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
-    enrichedRecords, hasGiacenza, availableMonths, resetData,
+    enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths,
   } = useDashboard();
 
   return (
