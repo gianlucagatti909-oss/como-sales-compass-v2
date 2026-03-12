@@ -61,12 +61,44 @@ const chartTooltipStyle = {
 
 export default function HomePage({ records, hasGiacenza, selectedMonth }: Props) {
   const navigate = useNavigate();
+  const allMonths = useMemo(() => getAllMonthsData(), [selectedMonth]);
+
+  // Revenue trend (all months)
+  const trendData = useMemo(() => allMonths.map(m => {
+    const fat = m.records.reduce((s, r) => s + r.venduto_euro, 0);
+    const pezzi = m.records.reduce((s, r) => s + r.venduto_pezzi, 0);
+    return { mese: formatMonth(m.mese), fatturato: fat, pezzi };
+  }), [allMonths]);
+
+  // STR trend (last 6 months)
+  const strTrendData = useMemo(() => {
+    if (!hasGiacenza) return [];
+    const last6 = allMonths.slice(-6);
+    return last6.map((m, idx) => {
+      const prev = idx > 0 ? last6[idx - 1] : undefined;
+      const enriched = enrichRecords(m, prev);
+      const strs = enriched.filter(r => r.str !== null).map(r => r.str!);
+      const avg = strs.length > 0 ? strs.reduce((a, b) => a + b, 0) / strs.length : 0;
+      return { mese: formatMonth(m.mese), str: parseFloat(avg.toFixed(1)) };
+    });
+  }, [allMonths, hasGiacenza]);
+
+  // Top 10 TP by revenue
+  const top10TP = useMemo(() => {
+    return [...records]
+      .sort((a, b) => b.venduto_euro - a.venduto_euro)
+      .slice(0, 10)
+      .map(r => ({
+        nome: r.tp_nome.length > 18 ? r.tp_nome.slice(0, 16) + "…" : r.tp_nome,
+        fullName: r.tp_nome,
+        fatturato: r.venduto_euro,
+        id: r.tp_id,
+      }));
+  }, [records]);
 
   if (records.length === 0 && !selectedMonth) {
     return <EmptyState />;
   }
-
-  const allMonths = useMemo(() => getAllMonthsData(), [selectedMonth]);
 
   // Current metrics
   const totalFatturato = records.reduce((s, r) => s + r.venduto_euro, 0);
