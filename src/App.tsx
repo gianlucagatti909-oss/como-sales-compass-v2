@@ -34,7 +34,7 @@ function DashboardApp() {
         <Route path="/" element={<HomePage records={enrichedRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
         <Route path="/touchpoints" element={<TPListPage records={enrichedRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} />} />
-        <Route path="/rappresentanti" element={<RappresentantiPage records={enrichedRecords} hasGiacenza={hasGiacenza} allMonths={useDashboard().allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />} />
+        <Route path="/rappresentanti" element={<RappresentantiPage records={enrichedRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />} />
         <Route path="/priorita" element={<PrioritaPage records={enrichedRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
         <Route path="/top-performer" element={<TopPerformerPage records={enrichedRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="*" element={<NotFound />} />
