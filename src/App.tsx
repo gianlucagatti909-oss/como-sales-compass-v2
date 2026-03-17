@@ -3,22 +3,45 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDashboard } from "@/hooks/use-dashboard";
+import { useAuth } from "@/hooks/use-auth";
 import Layout from "@/components/DashboardLayout";
+import LoginPage from "@/pages/LoginPage";
 import HomePage from "@/pages/HomePage";
 import TPListPage from "@/pages/TPListPage";
 import TPDetailPage from "@/pages/TPDetailPage";
 import RappresentantiPage from "@/pages/RappresentantiPage";
 import PrioritaPage from "@/pages/PrioritaPage";
 import TopPerformerPage from "@/pages/TopPerformerPage";
+import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
+import { useMemo } from "react";
 
 const queryClient = new QueryClient();
 
 function DashboardApp() {
+  const { user, login, logout, isAdmin } = useAuth();
   const {
     selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
-    enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths,
+    enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths, refresh,
   } = useDashboard();
+
+  // Filter records by representative if user is a representative
+  const filteredRecords = useMemo(() => {
+    if (!user || user.role === "admin") return enrichedRecords;
+    if (!user.rappresentante) return [];
+    return enrichedRecords.filter(r => r.rappresentante === user.rappresentante);
+  }, [enrichedRecords, user]);
+
+  // Get unique rappresentanti from all data for settings
+  const availableRappresentanti = useMemo(() => {
+    const set = new Set<string>();
+    allMonths.forEach(m => m.records.forEach(r => { if (r.rappresentante) set.add(r.rappresentante); }));
+    return [...set].sort();
+  }, [allMonths]);
+
+  if (!user) {
+    return <LoginPage onLogin={login} />;
+  }
 
   return (
     <Layout
@@ -29,14 +52,30 @@ function DashboardApp() {
       onConfirmUpload={confirmUpload}
       hasGiacenza={hasGiacenza}
       onReset={resetData}
+      onLogout={logout}
+      userName={user.displayName}
+      userRole={user.role}
+      isAdmin={isAdmin}
     >
       <Routes>
-        <Route path="/" element={<HomePage records={enrichedRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
-        <Route path="/touchpoints" element={<TPListPage records={enrichedRecords} hasGiacenza={hasGiacenza} />} />
+        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
+        <Route path="/touchpoints" element={<TPListPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} />} />
-        <Route path="/rappresentanti" element={<RappresentantiPage records={enrichedRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />} />
-        <Route path="/priorita" element={<PrioritaPage records={enrichedRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
-        <Route path="/top-performer" element={<TopPerformerPage records={enrichedRecords} hasGiacenza={hasGiacenza} />} />
+        <Route path="/rappresentanti" element={
+          isAdmin
+            ? <RappresentantiPage records={filteredRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />
+            : <div className="glass-card p-8 text-center text-muted-foreground">Accesso riservato al Sales Manager.</div>
+        } />
+        <Route path="/priorita" element={<PrioritaPage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
+        <Route path="/top-performer" element={<TopPerformerPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
+        <Route path="/impostazioni" element={
+          <SettingsPage
+            isAdmin={isAdmin}
+            currentUserId={user.id}
+            onDataChange={refresh}
+            availableRappresentanti={availableRappresentanti}
+          />
+        } />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>
