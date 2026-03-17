@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
 import { DashboardStore, MonthData, TPWithMetrics } from "@/types/dashboard";
-import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, getAvailableMonths, monthExists, clearStore } from "@/lib/store";
+import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, getAvailableMonths, monthExists, clearStore, deleteMonth } from "@/lib/store";
 import { enrichRecords } from "@/lib/calculations";
 import { parseCSV } from "@/lib/csv-parser";
+import { addImportMeta, removeImportMeta, clearSettings } from "@/lib/settings-store";
 
 function formatEuro(n: number): string {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,8 +17,15 @@ export function useDashboard() {
   });
 
   const refresh = useCallback(() => {
-    setStore(loadStore());
-  }, []);
+    const s = loadStore();
+    setStore(s);
+    const months = s.months.map(m => m.mese);
+    if (months.length > 0 && !months.includes(selectedMonth)) {
+      setSelectedMonth(months[months.length - 1]);
+    } else if (months.length === 0) {
+      setSelectedMonth("");
+    }
+  }, [selectedMonth]);
 
   const uploadCSV = useCallback((csvText: string): { success: boolean; message: string; needsConfirm?: boolean; mese?: string; summary?: string } => {
     const result = parseCSV(csvText);
@@ -33,6 +41,14 @@ export function useDashboard() {
     const newStore = addMonth(result.records, result.hasGiacenza);
     setStore(newStore);
     setSelectedMonth(result.mese!);
+
+    // Track import metadata
+    addImportMeta({
+      mese: result.mese!,
+      uploadDate: new Date().toISOString(),
+      tpCount: result.records.length,
+      totalFatturato: result.totalFatturato,
+    });
 
     const skippedInfo = result.skippedRows > 0
       ? ` ${result.skippedRows} righe ignorate.`
@@ -53,8 +69,27 @@ export function useDashboard() {
       const newStore = addMonth(result.records, result.hasGiacenza);
       setStore(newStore);
       setSelectedMonth(result.mese!);
+
+      addImportMeta({
+        mese: result.mese!,
+        uploadDate: new Date().toISOString(),
+        tpCount: result.records.length,
+        totalFatturato: result.totalFatturato,
+      });
     }
   }, []);
+
+  const removeMonth = useCallback((mese: string) => {
+    const newStore = deleteMonth(mese);
+    removeImportMeta(mese);
+    setStore(newStore);
+    const months = newStore.months.map(m => m.mese);
+    if (months.length > 0 && !months.includes(selectedMonth)) {
+      setSelectedMonth(months[months.length - 1]);
+    } else if (months.length === 0) {
+      setSelectedMonth("");
+    }
+  }, [selectedMonth]);
 
   const currentMonthData: MonthData | undefined = selectedMonth ? getMonthData(selectedMonth) : undefined;
   const previousMonthData: MonthData | undefined = selectedMonth ? getPreviousMonth(selectedMonth) : undefined;
@@ -68,6 +103,7 @@ export function useDashboard() {
 
   const resetData = useCallback(() => {
     clearStore();
+    clearSettings();
     setStore({ months: [] });
     setSelectedMonth("");
   }, []);
@@ -86,5 +122,6 @@ export function useDashboard() {
     allMonths: getAllMonthsData(),
     refresh,
     resetData,
+    removeMonth,
   };
 }

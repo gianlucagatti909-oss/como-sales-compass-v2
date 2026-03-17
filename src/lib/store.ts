@@ -56,6 +56,13 @@ export function getAllMonthsData(): MonthData[] {
   return loadStore().months;
 }
 
+export function deleteMonth(mese: string): DashboardStore {
+  const store = loadStore();
+  store.months = store.months.filter(m => m.mese !== mese);
+  saveStore(store);
+  return store;
+}
+
 export function clearStore(): void {
   localStorage.removeItem(STORAGE_KEY);
 }

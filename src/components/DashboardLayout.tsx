@@ -1,11 +1,12 @@
 import { ReactNode, useState, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2 } from "lucide-react";
+import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
+import { UserRole } from "@/types/auth";
 
 interface UploadResult {
   success: boolean;
@@ -24,24 +25,34 @@ interface LayoutProps {
   onConfirmUpload: (csv: string) => void;
   hasGiacenza: boolean;
   onReset: () => void;
+  onLogout: () => void;
+  userName: string;
+  userRole: UserRole;
+  isAdmin: boolean;
 }
 
-const navItems = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/touchpoints", label: "Touchpoint", icon: Store },
-  { path: "/rappresentanti", label: "Rappresentanti", icon: Users },
-  { path: "/priorita", label: "Priorità", icon: AlertTriangle },
-  { path: "/top-performer", label: "Top Performer", icon: Trophy },
-];
+const getNavItems = (isAdmin: boolean) => {
+  const items = [
+    { path: "/", label: "Dashboard", icon: LayoutDashboard },
+    { path: "/touchpoints", label: "Touchpoint", icon: Store },
+  ];
+  if (isAdmin) {
+    items.push({ path: "/rappresentanti", label: "Rappresentanti", icon: Users });
+  }
+  items.push(
+    { path: "/priorita", label: "Priorità", icon: AlertTriangle },
+    { path: "/top-performer", label: "Top Performer", icon: Trophy },
+    { path: "/impostazioni", label: "Impostazioni", icon: Settings },
+  );
+  return items;
+};
 
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      // Check for replacement characters (encoding issue)
       if (text.includes('\uFFFD')) {
-        // Retry with Latin-1
         const reader2 = new FileReader();
         reader2.onload = (ev2) => {
           resolve(ev2.target?.result as string);
@@ -57,13 +68,15 @@ function readFileAsText(file: File): Promise<string> {
 
 export default function Layout({
   children, selectedMonth, availableMonths, onMonthChange,
-  onUpload, onConfirmUpload, hasGiacenza, onReset
+  onUpload, onConfirmUpload, hasGiacenza, onReset, onLogout,
+  userName, userRole, isAdmin
 }: LayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const navItems = getNavItems(isAdmin);
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,15 +130,25 @@ export default function Layout({
           })}
         </nav>
         <div className="mt-auto flex flex-col gap-2">
+          {/* User info */}
+          <div className="px-3 py-2 text-xs">
+            <div className="font-medium truncate">{userName}</div>
+            <div className="text-muted-foreground">{userRole === "admin" ? "Sales Manager" : "Rappresentante"}</div>
+          </div>
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-          <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => fileRef.current?.click()}>
-            <Upload className="w-4 h-4" /> Carica CSV
-          </Button>
-          {availableMonths.length > 0 && (
+          {isAdmin && (
+            <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => fileRef.current?.click()}>
+              <Upload className="w-4 h-4" /> Carica CSV
+            </Button>
+          )}
+          {isAdmin && availableMonths.length > 0 && (
             <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-destructive hover:text-destructive" onClick={onReset}>
               <Trash2 className="w-4 h-4" /> Reset dati
             </Button>
           )}
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={onLogout}>
+            <LogOut className="w-4 h-4" /> Esci
+          </Button>
         </div>
       </aside>
 
@@ -138,10 +161,14 @@ export default function Layout({
           <span className="font-bold text-sm">Como 1907</span>
         </div>
         <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-          <Button variant="ghost" size="icon" onClick={() => fileRef.current?.click()}>
-            <Upload className="w-4 h-4" />
-          </Button>
+          {isAdmin && (
+            <>
+              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+              <Button variant="ghost" size="icon" onClick={() => fileRef.current?.click()}>
+                <Upload className="w-4 h-4" />
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
@@ -167,6 +194,13 @@ export default function Layout({
                 </Link>
               );
             })}
+            <button
+              onClick={() => { onLogout(); setMobileOpen(false); }}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            >
+              <LogOut className="w-5 h-5" />
+              Esci ({userName})
+            </button>
           </nav>
         </div>
       )}
