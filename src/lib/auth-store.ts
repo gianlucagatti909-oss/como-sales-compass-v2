@@ -11,6 +11,15 @@ const DEFAULT_ADMIN: UserProfile = {
   enabled: true,
 };
 
+const GIANLUCA_ADMIN: UserProfile = {
+  id: "admin-002",
+  username: "gianlucagatti909@gmail.com",
+  password: "admin",
+  role: "admin",
+  displayName: "Gianluca Gatti",
+  enabled: true,
+};
+
 export function loadAuth(): AuthState {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
