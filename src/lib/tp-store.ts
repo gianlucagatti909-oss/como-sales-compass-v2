@@ -6,6 +6,8 @@ export interface TPAnagrafica {
   referenteTelefono?: string;
   referenteEmail?: string;
   note?: string;
+  /** Track if data came from CSV import (vs manual edit) */
+  fromCSV?: boolean;
 }
 
 export interface TPVisita {
@@ -20,7 +22,13 @@ export interface TPLocalData {
   visite: TPVisita[];
 }
 
+export interface AnagraficaImportMeta {
+  date: string; // ISO
+  tpCount: number;
+}
+
 const STORE_KEY = "como1907_tp_local";
+const IMPORT_HISTORY_KEY = "como1907_anagrafica_imports";
 
 function loadAll(): Record<string, TPLocalData> {
   try {
@@ -53,6 +61,52 @@ export function saveTPAnagrafica(tpId: string, anagrafica: TPAnagrafica): void {
   saveAll(all);
 }
 
+/** Bulk import anagrafica from CSV. Returns counts of updated/new. */
+export function bulkImportAnagrafica(
+  rows: { tp_id: string; indirizzo?: string; referente_telefono?: string; referente_email?: string; note?: string }[],
+  overwrite: boolean
+): { updated: number; created: number } {
+  const all = loadAll();
+  let updated = 0;
+  let created = 0;
+
+  for (const row of rows) {
+    const existing = all[row.tp_id];
+    const hasExisting = existing && Object.values(existing.anagrafica).some(v => v);
+
+    if (hasExisting && !overwrite) continue;
+
+    if (hasExisting) updated++;
+    else created++;
+
+    ensureTP(all, row.tp_id);
+    all[row.tp_id].anagrafica = {
+      indirizzo: row.indirizzo ?? "",
+      referenteNome: "", // Not in CSV - kept from existing if any
+      referenteTelefono: row.referente_telefono ?? "",
+      referenteEmail: row.referente_email ?? "",
+      note: row.note ?? "",
+      fromCSV: true,
+    };
+    // Preserve existing referenteNome if we're overwriting
+    if (hasExisting && existing.anagrafica.referenteNome) {
+      all[row.tp_id].anagrafica.referenteNome = existing.anagrafica.referenteNome;
+    }
+  }
+
+  saveAll(all);
+  return { updated, created };
+}
+
+/** Get tp_ids that already have anagrafica data */
+export function getExistingAnagraficaIds(): string[] {
+  const all = loadAll();
+  return Object.keys(all).filter(id => {
+    const a = all[id].anagrafica;
+    return a && Object.values(a).some(v => v);
+  });
+}
+
 export function addTPVisita(tpId: string, visita: Omit<TPVisita, "id">): TPVisita {
   const all = loadAll();
   ensureTP(all, tpId);
@@ -67,4 +121,25 @@ export function deleteTPVisita(tpId: string, visitaId: string): void {
   if (!all[tpId]) return;
   all[tpId].visite = all[tpId].visite.filter(v => v.id !== visitaId);
   saveAll(all);
+}
+
+// Anagrafica import history
+export function getAnagraficaImportHistory(): AnagraficaImportMeta[] {
+  try {
+    const raw = localStorage.getItem(IMPORT_HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+export function addAnagraficaImportMeta(meta: AnagraficaImportMeta): void {
+  const history = getAnagraficaImportHistory();
+  history.push(meta);
+  localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+}
+
+export function removeAnagraficaImportMeta(index: number): void {
+  const history = getAnagraficaImportHistory();
+  history.splice(index, 1);
+  localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
 }
