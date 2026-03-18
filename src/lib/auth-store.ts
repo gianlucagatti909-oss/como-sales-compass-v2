@@ -11,19 +11,31 @@ const DEFAULT_ADMIN: UserProfile = {
   enabled: true,
 };
 
+const GIANLUCA_ADMIN: UserProfile = {
+  id: "admin-002",
+  username: "gianlucagatti909@gmail.com",
+  password: "admin",
+  role: "admin",
+  displayName: "Gianluca Gatti",
+  enabled: true,
+};
+
 export function loadAuth(): AuthState {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
     if (raw) {
       const state = JSON.parse(raw) as AuthState;
-      // Ensure default admin always exists
+      // Ensure default admins always exist
       if (!state.users.some(u => u.id === DEFAULT_ADMIN.id)) {
         state.users.unshift(DEFAULT_ADMIN);
+      }
+      if (!state.users.some(u => u.id === GIANLUCA_ADMIN.id)) {
+        state.users.splice(1, 0, GIANLUCA_ADMIN);
       }
       return state;
     }
   } catch {}
-  return { currentUserId: null, users: [DEFAULT_ADMIN] };
+  return { currentUserId: null, users: [DEFAULT_ADMIN, GIANLUCA_ADMIN] };
 }
 
 function saveAuth(state: AuthState): void {
