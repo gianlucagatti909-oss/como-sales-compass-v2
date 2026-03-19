@@ -120,7 +120,7 @@ export default function TPListPage({ records, hasGiacenza }: Props) {
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold flex items-center gap-2">
-              <MessageSquareSearch className="w-4 h-4" /> Cerca nelle note visite
+              <MessageSquareText className="w-4 h-4" /> Cerca nelle note visite
             </h3>
             <button onClick={() => { setShowVisitSearch(false); setVisitSearch(""); }} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
