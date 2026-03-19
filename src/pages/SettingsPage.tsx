@@ -496,18 +496,117 @@ function ConfigTab({ isAdmin, availableRappresentanti }: { isAdmin: boolean; ava
   );
 }
 
+// ===================== SALES IMPORT TAB =====================
+function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { isAdmin: boolean; onUpload: (csv: string) => UploadResult; onConfirmUpload: (csv: string) => void; onDataChange: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [confirmDialog, setConfirmDialog] = useState(false);
+  const [pendingCsv, setPendingCsv] = useState("");
+
+  const readFile = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        if (text.includes('\uFFFD')) {
+          const reader2 = new FileReader();
+          reader2.onload = (ev2) => resolve(ev2.target?.result as string);
+          reader2.readAsText(file, 'iso-8859-1');
+        } else {
+          resolve(text);
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    });
+  }, []);
+
+  const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await readFile(file);
+    const result = onUpload(text);
+    if (result.needsConfirm) {
+      setPendingCsv(text);
+      setConfirmDialog(true);
+    } else if (result.success) {
+      toast.success(result.message);
+      if (result.summary) toast.info(result.summary, { duration: 8000 });
+      onDataChange();
+    } else {
+      toast.error(result.message);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }, [readFile, onUpload, onDataChange]);
+
+  const handleConfirm = () => {
+    onConfirmUpload(pendingCsv);
+    setConfirmDialog(false);
+    onDataChange();
+    toast.success("Dati sovrascritti con successo");
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="glass-card p-6 text-center text-muted-foreground">
+        Solo il Sales Manager può importare dati vendite.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold">Import dati vendite mensili</h3>
+      <p className="text-xs text-muted-foreground">
+        Carica un CSV con i dati di vendita mensili. Colonne richieste: <code className="font-mono bg-muted px-1 rounded">tp_id, tp_nome, tp_tipo, tp_zona, rappresentante, venduto_pezzi, venduto_euro, mese</code>. 
+        Colonna opzionale: <code className="font-mono bg-muted px-1 rounded">giacenza_pezzi</code>.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
+          <Upload className="w-4 h-4" /> Carica CSV vendite
+        </Button>
+      </div>
+
+      <div className="glass-card p-5 text-xs text-muted-foreground space-y-2">
+        <p className="font-medium text-foreground text-sm">Formato richiesto</p>
+        <p>Il file deve contenere una riga per ogni TP con i dati di un singolo mese (formato <code className="font-mono bg-muted px-1 rounded">YYYY-MM</code>).</p>
+        <p>Separatore: virgola o punto e virgola (rilevato automaticamente). Encoding: UTF-8 o Latin-1.</p>
+        <p>Se il mese è già presente, verrà chiesta conferma prima di sovrascrivere.</p>
+      </div>
+
+      <Dialog open={confirmDialog} onOpenChange={setConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sovrascrivere dati esistenti?</DialogTitle>
+            <DialogDescription>
+              I dati per questo mese verranno sostituiti con il nuovo file caricato. Questa azione non è reversibile.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDialog(false)}>Annulla</Button>
+            <Button variant="destructive" onClick={handleConfirm}>Sovrascrivi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ===================== MAIN SETTINGS PAGE =====================
-export default function SettingsPage({ isAdmin, currentUserId, onDataChange, availableRappresentanti }: Props) {
+export default function SettingsPage({ isAdmin, currentUserId, onDataChange, availableRappresentanti, onUpload, onConfirmUpload }: Props) {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Impostazioni</h1>
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="users" className="gap-2 text-xs sm:text-sm">
             <Users className="w-4 h-4 hidden sm:inline" /> Utenti
           </TabsTrigger>
+          <TabsTrigger value="sales-import" className="gap-2 text-xs sm:text-sm">
+            <Database className="w-4 h-4 hidden sm:inline" /> Vendite
+          </TabsTrigger>
           <TabsTrigger value="history" className="gap-2 text-xs sm:text-sm">
-            <History className="w-4 h-4 hidden sm:inline" /> Import
+            <History className="w-4 h-4 hidden sm:inline" /> Storico
           </TabsTrigger>
           <TabsTrigger value="anagrafica" className="gap-2 text-xs sm:text-sm">
             <FileSpreadsheet className="w-4 h-4 hidden sm:inline" /> Anagrafica
@@ -519,6 +618,9 @@ export default function SettingsPage({ isAdmin, currentUserId, onDataChange, ava
 
         <TabsContent value="users">
           <UsersTab isAdmin={isAdmin} currentUserId={currentUserId} availableRappresentanti={availableRappresentanti} />
+        </TabsContent>
+        <TabsContent value="sales-import">
+          <SalesImportTab isAdmin={isAdmin} onUpload={onUpload} onConfirmUpload={onConfirmUpload} onDataChange={onDataChange} />
         </TabsContent>
         <TabsContent value="history">
           <ImportHistoryTab isAdmin={isAdmin} onDataChange={onDataChange} />
