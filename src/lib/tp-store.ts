@@ -143,3 +143,40 @@ export function removeAnagraficaImportMeta(index: number): void {
   history.splice(index, 1);
   localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
 }
+
+export interface VisitSearchResult {
+  tpId: string;
+  tpNome: string;
+  visita: TPVisita;
+  matchSnippet: string;
+}
+
+/** Search all visit notes across all TPs. Case-insensitive partial match. */
+export function searchAllVisite(query: string, tpNames: Record<string, string>): VisitSearchResult[] {
+  if (!query.trim()) return [];
+  const all = loadAll();
+  const q = query.toLowerCase();
+  const results: VisitSearchResult[] = [];
+
+  for (const [tpId, data] of Object.entries(all)) {
+    for (const visita of data.visite) {
+      const noteLC = visita.note.toLowerCase();
+      const idx = noteLC.indexOf(q);
+      if (idx === -1) continue;
+
+      const start = Math.max(0, idx - 30);
+      const end = Math.min(visita.note.length, idx + query.length + 30);
+      const snippet = (start > 0 ? "…" : "") + visita.note.slice(start, end) + (end < visita.note.length ? "…" : "");
+
+      results.push({
+        tpId,
+        tpNome: tpNames[tpId] || tpId,
+        visita,
+        matchSnippet: snippet,
+      });
+    }
+  }
+
+  results.sort((a, b) => b.visita.data.localeCompare(a.visita.data));
+  return results;
+}
