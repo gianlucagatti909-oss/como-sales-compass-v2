@@ -12,14 +12,24 @@ import { formatMonth, formatCurrency } from "@/lib/calculations";
 import { ABCThresholds, ImportMeta } from "@/types/settings";
 import { bulkImportAnagrafica, getExistingAnagraficaIds, getAnagraficaImportHistory, addAnagraficaImportMeta, removeAnagraficaImportMeta, AnagraficaImportMeta } from "@/lib/tp-store";
 import { parseAnagraficaCSV, generateAnagraficaTemplate } from "@/lib/anagrafica-parser";
-import { Users, History, Settings, Plus, UserCheck, UserX, Trash2, Download, Upload, FileSpreadsheet } from "lucide-react";
+import { Users, History, Settings, Plus, UserCheck, UserX, Trash2, Download, Upload, FileSpreadsheet, Database } from "lucide-react";
 import { toast } from "sonner";
+
+interface UploadResult {
+  success: boolean;
+  message: string;
+  needsConfirm?: boolean;
+  mese?: string;
+  summary?: string;
+}
 
 interface Props {
   isAdmin: boolean;
   currentUserId: string | null;
   onDataChange: () => void;
   availableRappresentanti: string[];
+  onUpload: (csv: string) => UploadResult;
+  onConfirmUpload: (csv: string) => void;
 }
 
 // ===================== USERS TAB =====================

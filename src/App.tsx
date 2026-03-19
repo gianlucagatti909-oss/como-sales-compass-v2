@@ -74,6 +74,8 @@ function DashboardApp() {
             currentUserId={user.id}
             onDataChange={refresh}
             availableRappresentanti={availableRappresentanti}
+            onUpload={uploadCSV}
+            onConfirmUpload={confirmUpload}
           />
         } />
         <Route path="*" element={<NotFound />} />
