@@ -79,7 +79,7 @@ export default function TPListPage({ records, hasGiacenza }: Props) {
           className={`inline-flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${showVisitSearch ? "border-primary bg-primary/10 text-primary" : "border-input bg-background text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
           title="Cerca nelle note visite"
         >
-          <MessageSquareSearch className="w-4 h-4" /> Note visite
+          <MessageSquareText className="w-4 h-4" /> Note visite
         </button>
         <Select value={filterRapp} onValueChange={setFilterRapp}>
           <SelectTrigger className="w-40"><SelectValue placeholder="Rappresentante" /></SelectTrigger>
