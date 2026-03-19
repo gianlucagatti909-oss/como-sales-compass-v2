@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { TPWithMetrics } from "@/types/dashboard";
 import { formatCurrency, formatPercent } from "@/lib/calculations";
 import { CategoryBadge } from "@/components/MetricBadges";
