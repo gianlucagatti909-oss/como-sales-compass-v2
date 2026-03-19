@@ -502,6 +502,18 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
 
+  const handleDownloadTemplate = () => {
+    const header = "tp_id;tp_nome;tp_tipo;tp_zona;rappresentante;venduto_pezzi;venduto_euro;giacenza_pezzi;mese";
+    const row1 = 'C-000001;"Bar Roma";bar;"Como Centro";"Mario Rossi";150;2450.00;80;2025-01';
+    const row2 = 'C-000002;"Hotel Lario";hotel;"Cernobbio";"Luigi Bianchi";85;1320.50;120;2025-01';
+    const csv = [header, row1, row2].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "sales_import_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const readFile = useCallback((file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -565,7 +577,11 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         <Button size="sm" variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
           <Upload className="w-4 h-4" /> Carica CSV vendite
         </Button>
+        <Button size="sm" variant="outline" className="gap-2" onClick={handleDownloadTemplate}>
+          <Download className="w-4 h-4" /> Scarica template CSV
+        </Button>
       </div>
+      <p className="text-xs text-muted-foreground italic">Non sai come formattare il file? Scarica il template.</p>
 
       <div className="glass-card p-5 text-xs text-muted-foreground space-y-2">
         <p className="font-medium text-foreground text-sm">Formato richiesto</p>

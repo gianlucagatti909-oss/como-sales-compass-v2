@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { TPWithMetrics } from "@/types/dashboard";
 import { getAllMonthsData } from "@/lib/store";
 import { formatCurrency, formatPercent, formatMonth } from "@/lib/calculations";
@@ -85,8 +86,10 @@ export default function PrioritaPage({ records, hasGiacenza, selectedMonth }: Pr
                 {priorityList.map(r => (
                   <tr key={r.tp_id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium">{r.tp_nome}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.tp_id}</div>
+                      <Link to={`/touchpoints/${r.tp_id}`} className="group">
+                        <div className="font-medium group-hover:text-primary group-hover:underline underline-offset-2 transition-colors">{r.tp_nome}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{r.tp_id}</div>
+                      </Link>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{r.rappresentante}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{r.tp_zona}</td>
