@@ -5,7 +5,7 @@ import { formatCurrency, formatPercent } from "@/lib/calculations";
 import { CategoryBadge, TrendBadge, TrendIcon } from "@/components/MetricBadges";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, ChevronRight, MessageSquareSearch, CalendarDays, X } from "lucide-react";
+import { Search, ChevronRight, MessageSquareText, CalendarDays, X } from "lucide-react";
 import { searchAllVisite, VisitSearchResult } from "@/lib/tp-store";
 import EmptyState from "@/components/EmptyState";
 
