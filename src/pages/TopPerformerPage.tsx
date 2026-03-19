@@ -51,7 +51,7 @@ export default function TopPerformerPage({ records, hasGiacenza }: Props) {
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div>
-                      <div className="font-medium">{r.tp_nome}</div>
+                      <Link to={`/touchpoints/${r.tp_id}`} className="font-medium hover:text-primary hover:underline underline-offset-2 transition-colors">{r.tp_nome}</Link>
                       <div className="text-xs text-muted-foreground">{r.rappresentante}</div>
                     </div>
                     {inBoth.has(r.tp_id) && <Star className="w-3.5 h-3.5 text-primary fill-primary" />}

@@ -565,7 +565,11 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         <Button size="sm" variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
           <Upload className="w-4 h-4" /> Carica CSV vendite
         </Button>
+        <Button size="sm" variant="outline" className="gap-2" onClick={handleDownloadTemplate}>
+          <Download className="w-4 h-4" /> Scarica template CSV
+        </Button>
       </div>
+      <p className="text-xs text-muted-foreground italic">Non sai come formattare il file? Scarica il template.</p>
 
       <div className="glass-card p-5 text-xs text-muted-foreground space-y-2">
         <p className="font-medium text-foreground text-sm">Formato richiesto</p>
