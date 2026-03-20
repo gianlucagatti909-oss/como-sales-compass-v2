@@ -501,6 +501,9 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
+  const [importMode, setImportMode] = useState<"append" | "overwrite">("append");
+  const [overwriteWarning, setOverwriteWarning] = useState(false);
+  const [pendingFile, setPendingFile] = useState<string | null>(null);
 
   const handleDownloadTemplate = () => {
     const header = "tp_id;tp_nome;tp_tipo;tp_zona;rappresentante;venduto_pezzi;venduto_euro;giacenza_pezzi;mese";
@@ -535,23 +538,40 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await readFile(file);
-    const result = onUpload(text);
-    if (result.needsConfirm) {
-      setPendingCsv(text);
-      setConfirmDialog(true);
-    } else if (result.success) {
-      toast.success(result.message);
-      if (result.summary) toast.info(result.summary, { duration: 8000 });
-      onDataChange();
+
+    if (importMode === "overwrite") {
+      // Show overwrite warning before proceeding
+      setPendingFile(text);
+      setOverwriteWarning(true);
     } else {
-      toast.error(result.message);
+      // Append mode: use existing logic
+      const result = onUpload(text);
+      if (result.needsConfirm) {
+        setPendingCsv(text);
+        setConfirmDialog(true);
+      } else if (result.success) {
+        toast.success(result.message);
+        if (result.summary) toast.info(result.summary, { duration: 8000 });
+        onDataChange();
+      } else {
+        toast.error(result.message);
+      }
     }
     if (fileRef.current) fileRef.current.value = "";
-  }, [readFile, onUpload, onDataChange]);
+  }, [readFile, onUpload, onDataChange, importMode]);
 
   const handleConfirm = () => {
     onConfirmUpload(pendingCsv);
     setConfirmDialog(false);
+    onDataChange();
+    toast.success("Dati sovrascritti con successo");
+  };
+
+  const handleOverwriteConfirm = () => {
+    if (!pendingFile) return;
+    onConfirmUpload(pendingFile);
+    setOverwriteWarning(false);
+    setPendingFile(null);
     onDataChange();
     toast.success("Dati sovrascritti con successo");
   };
@@ -572,6 +592,37 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         Colonna opzionale: <code className="font-mono bg-muted px-1 rounded">giacenza_pezzi</code>.
       </p>
 
+      {/* Import mode selector */}
+      <div className="glass-card p-4 space-y-3">
+        <h4 className="text-sm font-medium">Modalità di import</h4>
+        <div className="flex flex-col gap-2">
+          <label
+            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${importMode === "append" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"}`}
+            onClick={() => setImportMode("append")}
+          >
+            <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${importMode === "append" ? "border-primary" : "border-muted-foreground"}`}>
+              {importMode === "append" && <div className="w-2 h-2 rounded-full bg-primary" />}
+            </div>
+            <div>
+              <div className="text-sm font-medium">Aggiungi</div>
+              <div className="text-xs text-muted-foreground">Aggiunge i dati del mese. Se il mese è già presente, verrà chiesta conferma per sovrascrivere.</div>
+            </div>
+          </label>
+          <label
+            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${importMode === "overwrite" ? "border-destructive bg-destructive/5" : "border-border hover:bg-muted/30"}`}
+            onClick={() => setImportMode("overwrite")}
+          >
+            <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${importMode === "overwrite" ? "border-destructive" : "border-muted-foreground"}`}>
+              {importMode === "overwrite" && <div className="w-2 h-2 rounded-full bg-destructive" />}
+            </div>
+            <div>
+              <div className="text-sm font-medium">Sovrascrivi</div>
+              <div className="text-xs text-muted-foreground">Sostituisce tutti i dati esistenti per lo stesso mese senza chiedere conferma aggiuntiva. Un avviso finale verrà mostrato prima dell'operazione.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
         <Button size="sm" variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
@@ -590,6 +641,7 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         <p>Se il mese è già presente, verrà chiesta conferma prima di sovrascrivere.</p>
       </div>
 
+      {/* Confirm dialog for append mode (month exists) */}
       <Dialog open={confirmDialog} onOpenChange={setConfirmDialog}>
         <DialogContent>
           <DialogHeader>
@@ -601,6 +653,22 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDialog(false)}>Annulla</Button>
             <Button variant="destructive" onClick={handleConfirm}>Sovrascrivi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Overwrite mode warning */}
+      <Dialog open={overwriteWarning} onOpenChange={setOverwriteWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>⚠️ Conferma sovrascrittura</DialogTitle>
+            <DialogDescription>
+              Stai per sovrascrivere i dati esistenti per questo mese. I dati precedenti verranno eliminati e sostituiti con il nuovo file. Questa operazione non può essere annullata. Continuare?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setOverwriteWarning(false); setPendingFile(null); }}>Annulla</Button>
+            <Button variant="destructive" onClick={handleOverwriteConfirm}>Sovrascrivi</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
