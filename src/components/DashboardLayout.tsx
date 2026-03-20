@@ -237,6 +237,11 @@ export default function Layout({
               </span>
             ) : null}
           </div>
+          {availableMonths.length > 0 && selectedMonth && (
+            <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setExportOpen(true)}>
+              <FileDown className="w-4 h-4" /> Esporta PDF
+            </Button>
+          )}
         </div>
 
         <div className="p-4 lg:p-6 animate-fade-in">
