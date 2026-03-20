@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
 import { UserRole } from "@/types/auth";
+import { TPWithMetrics } from "@/types/dashboard";
+import ExportReportModal from "@/components/ExportReportModal";
 
 interface UploadResult {
   success: boolean;
