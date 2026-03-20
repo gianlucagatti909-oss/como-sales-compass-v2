@@ -1,12 +1,14 @@
 import { ReactNode, useState, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
 import { UserRole } from "@/types/auth";
+import { TPWithMetrics } from "@/types/dashboard";
+import ExportReportModal from "@/components/ExportReportModal";
 
 interface UploadResult {
   success: boolean;
@@ -29,6 +31,8 @@ interface LayoutProps {
   userName: string;
   userRole: UserRole;
   isAdmin: boolean;
+  records: TPWithMetrics[];
+  hasGiacenzaProp: boolean;
 }
 
 const getNavItems = (isAdmin: boolean) => {
@@ -69,13 +73,14 @@ function readFileAsText(file: File): Promise<string> {
 export default function Layout({
   children, selectedMonth, availableMonths, onMonthChange,
   onUpload, onConfirmUpload, hasGiacenza, onReset, onLogout,
-  userName, userRole, isAdmin
+  userName, userRole, isAdmin, records, hasGiacenzaProp
 }: LayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const navItems = getNavItems(isAdmin);
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,6 +237,11 @@ export default function Layout({
               </span>
             ) : null}
           </div>
+          {availableMonths.length > 0 && selectedMonth && (
+            <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setExportOpen(true)}>
+              <FileDown className="w-4 h-4" /> Esporta PDF
+            </Button>
+          )}
         </div>
 
         <div className="p-4 lg:p-6 animate-fade-in">
@@ -254,6 +264,14 @@ export default function Layout({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ExportReportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        records={records}
+        selectedMonth={selectedMonth}
+        hasGiacenza={hasGiacenzaProp}
+      />
     </div>
   );
 }
