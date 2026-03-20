@@ -31,6 +31,8 @@ interface LayoutProps {
   userName: string;
   userRole: UserRole;
   isAdmin: boolean;
+  records: TPWithMetrics[];
+  hasGiacenzaProp: boolean;
 }
 
 const getNavItems = (isAdmin: boolean) => {
