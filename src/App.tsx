@@ -56,6 +56,8 @@ function DashboardApp() {
       userName={user.displayName}
       userRole={user.role}
       isAdmin={isAdmin}
+      records={filteredRecords}
+      hasGiacenzaProp={hasGiacenza}
     >
       <Routes>
         <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />

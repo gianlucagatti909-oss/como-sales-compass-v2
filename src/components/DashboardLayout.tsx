@@ -264,6 +264,14 @@ export default function Layout({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ExportReportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        records={records}
+        selectedMonth={selectedMonth}
+        hasGiacenza={hasGiacenzaProp}
+      />
     </div>
   );
 }
