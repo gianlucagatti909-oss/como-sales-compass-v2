@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { DashboardStore, MonthData, TPWithMetrics } from "@/types/dashboard";
 import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, getAvailableMonths, monthExists, clearStore, deleteMonth } from "@/lib/store";
 import { enrichRecords } from "@/lib/calculations";
