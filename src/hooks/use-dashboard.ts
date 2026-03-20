@@ -91,12 +91,19 @@ export function useDashboard() {
     }
   }, [selectedMonth]);
 
-  const currentMonthData: MonthData | undefined = selectedMonth ? getMonthData(selectedMonth) : undefined;
-  const previousMonthData: MonthData | undefined = selectedMonth ? getPreviousMonth(selectedMonth) : undefined;
+  const currentMonthData: MonthData | undefined = useMemo(
+    () => selectedMonth ? getMonthData(selectedMonth) : undefined,
+    [selectedMonth, store]
+  );
+  const previousMonthData: MonthData | undefined = useMemo(
+    () => selectedMonth ? getPreviousMonth(selectedMonth) : undefined,
+    [selectedMonth, store]
+  );
 
-  const enrichedRecords: TPWithMetrics[] = currentMonthData
-    ? enrichRecords(currentMonthData, previousMonthData)
-    : [];
+  const enrichedRecords: TPWithMetrics[] = useMemo(
+    () => currentMonthData ? enrichRecords(currentMonthData, previousMonthData) : [],
+    [currentMonthData, previousMonthData]
+  );
 
   const hasGiacenza = currentMonthData?.hasGiacenza ?? false;
   const availableMonths = store.months.map(m => m.mese);
