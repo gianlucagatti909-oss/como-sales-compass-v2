@@ -73,7 +73,7 @@ function readFileAsText(file: File): Promise<string> {
 export default function Layout({
   children, selectedMonth, availableMonths, onMonthChange,
   onUpload, onConfirmUpload, hasGiacenza, onReset, onLogout,
-  userName, userRole, isAdmin
+  userName, userRole, isAdmin, records, hasGiacenzaProp
 }: LayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
