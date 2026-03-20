@@ -80,6 +80,7 @@ export default function Layout({
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const navItems = getNavItems(isAdmin);
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
