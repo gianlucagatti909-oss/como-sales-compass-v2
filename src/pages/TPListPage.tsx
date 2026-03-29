@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { TPWithMetrics } from "@/types/dashboard";
 import { formatCurrency, formatPercent } from "@/lib/calculations";
@@ -47,9 +47,14 @@ export default function TPListPage({ records, hasGiacenza }: Props) {
     return m;
   }, [records]);
 
-  const visitResults = useMemo(() => {
-    if (!visitSearch.trim()) return [];
-    return searchAllVisite(visitSearch, tpNames);
+  const [visitResults, setVisitResults] = useState<VisitSearchResult[]>([]);
+  useEffect(() => {
+    if (!visitSearch.trim()) { setVisitResults([]); return; }
+    let cancelled = false;
+    searchAllVisite(visitSearch, tpNames).then(results => {
+      if (!cancelled) setVisitResults(results);
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [visitSearch, tpNames]);
 
   const rappresentanti = useMemo(

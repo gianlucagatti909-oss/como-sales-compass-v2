@@ -1,71 +1,139 @@
+import { supabase } from "@/lib/supabase";
 import { DashboardStore, MonthData, TPRecord } from "@/types/dashboard";
 
-const STORAGE_KEY = "como1907_dashboard";
-
-export function loadStore(): DashboardStore {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.months)) return parsed;
-    }
-  } catch {}
-  return { months: [] };
+function rowToTPRecord(row: Record<string, unknown>): TPRecord {
+  return {
+    tp_id: row.tp_id as string,
+    tp_nome: row.tp_nome as string,
+    tp_tipo: row.tp_tipo as string,
+    tp_zona: row.tp_zona as string,
+    rappresentante: row.rappresentante as string,
+    venduto_pezzi: Number(row.venduto_pezzi),
+    venduto_euro: Number(row.venduto_euro),
+    giacenza_pezzi: row.giacenza_pezzi != null ? Number(row.giacenza_pezzi) : null,
+    mese: row.mese as string,
+  };
 }
 
-export function saveStore(store: DashboardStore): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+function rowsToMonthData(mese: string, rows: Record<string, unknown>[]): MonthData {
+  const records = rows.map(rowToTPRecord);
+  const hasGiacenza = (rows[0]?.has_giacenza as boolean) ?? false;
+  return { mese, records, hasGiacenza };
 }
 
-export function addMonth(records: TPRecord[], hasGiacenza: boolean): DashboardStore {
-  const store = loadStore();
-  const mese = records[0]?.mese;
-  if (!mese) return store;
+export async function loadStore(): Promise<DashboardStore> {
+  const { data, error } = await supabase
+    .from("tp_records")
+    .select("*")
+    .order("mese", { ascending: true });
 
-  const existing = store.months.findIndex(m => m.mese === mese);
-  const monthData: MonthData = { mese, records, hasGiacenza };
-
-  if (existing >= 0) {
-    store.months[existing] = monthData;
-  } else {
-    store.months.push(monthData);
-    store.months.sort((a, b) => a.mese.localeCompare(b.mese));
+  if (error) {
+    console.error("[store] loadStore error:", error);
+    return { months: [] };
   }
 
-  saveStore(store);
-  return store;
+  // Group by mese
+  const byMese = new Map<string, Record<string, unknown>[]>();
+  for (const row of data ?? []) {
+    const key = row.mese as string;
+    if (!byMese.has(key)) byMese.set(key, []);
+    byMese.get(key)!.push(row as Record<string, unknown>);
+  }
+
+  const months: MonthData[] = Array.from(byMese.entries()).map(([mese, rows]) =>
+    rowsToMonthData(mese, rows)
+  );
+
+  return { months };
 }
 
-export function monthExists(mese: string): boolean {
-  return loadStore().months.some(m => m.mese === mese);
+export async function addMonth(records: TPRecord[], hasGiacenza: boolean): Promise<DashboardStore> {
+  const mese = records[0]?.mese;
+  if (!mese) return loadStore();
+
+  // Delete existing records for this month first (upsert by mese+tp_id not supported for bulk efficiently)
+  const { error: delError } = await supabase
+    .from("tp_records")
+    .delete()
+    .eq("mese", mese);
+
+  if (delError) {
+    console.error("[store] addMonth delete error:", delError);
+    throw new Error("Errore durante la sovrascrittura dei dati esistenti");
+  }
+
+  const rows = records.map(r => ({
+    tp_id: r.tp_id,
+    tp_nome: r.tp_nome,
+    tp_tipo: r.tp_tipo,
+    tp_zona: r.tp_zona,
+    rappresentante: r.rappresentante,
+    venduto_pezzi: r.venduto_pezzi,
+    venduto_euro: r.venduto_euro,
+    giacenza_pezzi: r.giacenza_pezzi,
+    mese: r.mese,
+    has_giacenza: hasGiacenza,
+  }));
+
+  const { error: insError } = await supabase.from("tp_records").insert(rows);
+  if (insError) {
+    console.error("[store] addMonth insert error:", insError);
+    throw new Error("Errore durante il salvataggio dei dati");
+  }
+
+  return loadStore();
 }
 
-export function getAvailableMonths(): string[] {
-  return loadStore().months.map(m => m.mese);
+export async function monthExists(mese: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("tp_records")
+    .select("*", { count: "exact", head: true })
+    .eq("mese", mese);
+
+  if (error) {
+    console.error("[store] monthExists error:", error);
+    return false;
+  }
+  return (count ?? 0) > 0;
 }
 
-export function getMonthData(mese: string): MonthData | undefined {
-  return loadStore().months.find(m => m.mese === mese);
+export async function getAvailableMonths(): Promise<string[]> {
+  const store = await loadStore();
+  return store.months.map(m => m.mese);
 }
 
-export function getPreviousMonth(mese: string): MonthData | undefined {
-  const store = loadStore();
+export async function getMonthData(mese: string): Promise<MonthData | undefined> {
+  const { data, error } = await supabase
+    .from("tp_records")
+    .select("*")
+    .eq("mese", mese);
+
+  if (error || !data || data.length === 0) return undefined;
+  return rowsToMonthData(mese, data as Record<string, unknown>[]);
+}
+
+export async function getPreviousMonth(mese: string): Promise<MonthData | undefined> {
+  const store = await loadStore();
   const idx = store.months.findIndex(m => m.mese === mese);
   if (idx <= 0) return undefined;
   return store.months[idx - 1];
 }
 
-export function getAllMonthsData(): MonthData[] {
-  return loadStore().months;
+export async function getAllMonthsData(): Promise<MonthData[]> {
+  const store = await loadStore();
+  return store.months;
 }
 
-export function deleteMonth(mese: string): DashboardStore {
-  const store = loadStore();
-  store.months = store.months.filter(m => m.mese !== mese);
-  saveStore(store);
-  return store;
+export async function deleteMonth(mese: string): Promise<DashboardStore> {
+  const { error } = await supabase.from("tp_records").delete().eq("mese", mese);
+  if (error) {
+    console.error("[store] deleteMonth error:", error);
+    throw new Error("Errore durante l'eliminazione del mese");
+  }
+  return loadStore();
 }
 
-export function clearStore(): void {
-  localStorage.removeItem(STORAGE_KEY);
+export async function clearStore(): Promise<void> {
+  const { error } = await supabase.from("tp_records").delete().neq("mese", "");
+  if (error) console.error("[store] clearStore error:", error);
 }

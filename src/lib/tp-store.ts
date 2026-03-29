@@ -1,4 +1,6 @@
-/** Local persistence for TP-level editable data: anagrafica overrides and visit logs */
+/** Supabase-backed persistence for TP-level editable data: anagrafica and visit logs */
+
+import { supabase } from "@/lib/supabase";
 
 export interface TPAnagrafica {
   indirizzo?: string;
@@ -23,133 +25,199 @@ export interface TPLocalData {
 }
 
 export interface AnagraficaImportMeta {
+  id: string; // UUID from Supabase
   date: string; // ISO
   tpCount: number;
 }
 
-const STORE_KEY = "como1907_tp_local";
-const IMPORT_HISTORY_KEY = "como1907_anagrafica_imports";
+// ─── Anagrafica ───────────────────────────────────────────────────────────────
 
-function loadAll(): Record<string, TPLocalData> {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-      throw new Error("TP local data malformed");
-    }
-  } catch (e) {
-    console.error("[tp-store] Dati locali corrotti, ripristino:", e);
-    localStorage.removeItem(STORE_KEY);
+export async function getTPLocal(tpId: string): Promise<TPLocalData> {
+  const [anagraficaResult, visiteResult] = await Promise.all([
+    supabase.from("tp_anagrafica").select("*").eq("tp_id", tpId).maybeSingle(),
+    supabase.from("tp_visite").select("*").eq("tp_id", tpId).order("data", { ascending: false }),
+  ]);
+
+  const anagrafica: TPAnagrafica = {};
+  if (anagraficaResult.data) {
+    const row = anagraficaResult.data;
+    anagrafica.indirizzo = row.indirizzo ?? "";
+    anagrafica.referenteNome = row.referente_nome ?? "";
+    anagrafica.referenteTelefono = row.referente_telefono ?? "";
+    anagrafica.referenteEmail = row.referente_email ?? "";
+    anagrafica.note = row.note ?? "";
+    anagrafica.fromCSV = row.from_csv ?? false;
   }
-  return {};
+
+  const visite: TPVisita[] = (visiteResult.data ?? []).map(row => ({
+    id: row.id as string,
+    data: row.data as string,
+    rappresentante: row.rappresentante as string,
+    note: row.note as string,
+  }));
+
+  return { anagrafica, visite };
 }
 
-function saveAll(data: Record<string, TPLocalData>): void {
-  localStorage.setItem(STORE_KEY, JSON.stringify(data));
-}
+export async function saveTPAnagrafica(tpId: string, anagrafica: TPAnagrafica): Promise<void> {
+  const row = {
+    tp_id: tpId,
+    indirizzo: anagrafica.indirizzo ?? "",
+    referente_nome: anagrafica.referenteNome ?? "",
+    referente_telefono: anagrafica.referenteTelefono ?? "",
+    referente_email: anagrafica.referenteEmail ?? "",
+    note: anagrafica.note ?? "",
+    from_csv: anagrafica.fromCSV ?? false,
+    updated_at: new Date().toISOString(),
+  };
 
-function ensureTP(all: Record<string, TPLocalData>, tpId: string): TPLocalData {
-  if (!all[tpId]) {
-    all[tpId] = { anagrafica: {}, visite: [] };
+  const { error } = await supabase
+    .from("tp_anagrafica")
+    .upsert(row, { onConflict: "tp_id" });
+
+  if (error) {
+    console.error("[tp-store] saveTPAnagrafica error:", error);
+    throw new Error("Errore durante il salvataggio dell'anagrafica");
   }
-  return all[tpId];
-}
-
-export function getTPLocal(tpId: string): TPLocalData {
-  const all = loadAll();
-  return all[tpId] ?? { anagrafica: {}, visite: [] };
-}
-
-export function saveTPAnagrafica(tpId: string, anagrafica: TPAnagrafica): void {
-  const all = loadAll();
-  ensureTP(all, tpId);
-  all[tpId].anagrafica = anagrafica;
-  saveAll(all);
 }
 
 /** Bulk import anagrafica from CSV. Returns counts of updated/new. */
-export function bulkImportAnagrafica(
+export async function bulkImportAnagrafica(
   rows: { tp_id: string; indirizzo?: string; referente_telefono?: string; referente_email?: string; note?: string }[],
   overwrite: boolean
-): { updated: number; created: number } {
-  const all = loadAll();
+): Promise<{ updated: number; created: number }> {
+  const existingIds = await getExistingAnagraficaIds();
+  const existingSet = new Set(existingIds);
+
   let updated = 0;
   let created = 0;
+  const toUpsert = [];
 
   for (const row of rows) {
-    const existing = all[row.tp_id];
-    const hasExisting = existing && Object.values(existing.anagrafica).some(v => v);
-
+    const hasExisting = existingSet.has(row.tp_id);
     if (hasExisting && !overwrite) continue;
 
     if (hasExisting) updated++;
     else created++;
 
-    ensureTP(all, row.tp_id);
-    all[row.tp_id].anagrafica = {
+    // Preserve referenteNome if overwriting
+    let referenteNome = "";
+    if (hasExisting && overwrite) {
+      const { data } = await supabase
+        .from("tp_anagrafica")
+        .select("referente_nome")
+        .eq("tp_id", row.tp_id)
+        .maybeSingle();
+      referenteNome = data?.referente_nome ?? "";
+    }
+
+    toUpsert.push({
+      tp_id: row.tp_id,
       indirizzo: row.indirizzo ?? "",
-      referenteNome: "", // Not in CSV - kept from existing if any
-      referenteTelefono: row.referente_telefono ?? "",
-      referenteEmail: row.referente_email ?? "",
+      referente_nome: referenteNome,
+      referente_telefono: row.referente_telefono ?? "",
+      referente_email: row.referente_email ?? "",
       note: row.note ?? "",
-      fromCSV: true,
-    };
-    // Preserve existing referenteNome if we're overwriting
-    if (hasExisting && existing.anagrafica.referenteNome) {
-      all[row.tp_id].anagrafica.referenteNome = existing.anagrafica.referenteNome;
+      from_csv: true,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  if (toUpsert.length > 0) {
+    const { error } = await supabase
+      .from("tp_anagrafica")
+      .upsert(toUpsert, { onConflict: "tp_id" });
+    if (error) {
+      console.error("[tp-store] bulkImportAnagrafica error:", error);
+      throw new Error("Errore durante l'import dell'anagrafica");
     }
   }
 
-  saveAll(all);
   return { updated, created };
 }
 
 /** Get tp_ids that already have anagrafica data */
-export function getExistingAnagraficaIds(): string[] {
-  const all = loadAll();
-  return Object.keys(all).filter(id => {
-    const a = all[id].anagrafica;
-    return a && Object.values(a).some(v => v);
-  });
+export async function getExistingAnagraficaIds(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("tp_anagrafica")
+    .select("tp_id");
+
+  if (error) {
+    console.error("[tp-store] getExistingAnagraficaIds error:", error);
+    return [];
+  }
+
+  return (data ?? []).map(row => row.tp_id as string);
 }
 
-export function addTPVisita(tpId: string, visita: Omit<TPVisita, "id">): TPVisita {
-  const all = loadAll();
-  ensureTP(all, tpId);
-  const newVisita: TPVisita = { ...visita, id: `v-${Date.now()}` };
-  all[tpId].visite.unshift(newVisita);
-  saveAll(all);
-  return newVisita;
+// ─── Visite ───────────────────────────────────────────────────────────────────
+
+export async function addTPVisita(tpId: string, visita: Omit<TPVisita, "id">): Promise<TPVisita> {
+  const { data, error } = await supabase
+    .from("tp_visite")
+    .insert({ tp_id: tpId, data: visita.data, rappresentante: visita.rappresentante, note: visita.note })
+    .select()
+    .single();
+
+  if (error || !data) {
+    console.error("[tp-store] addTPVisita error:", error);
+    throw new Error("Errore durante il salvataggio della visita");
+  }
+
+  return { id: data.id, data: data.data, rappresentante: data.rappresentante, note: data.note };
 }
 
-export function deleteTPVisita(tpId: string, visitaId: string): void {
-  const all = loadAll();
-  if (!all[tpId]) return;
-  all[tpId].visite = all[tpId].visite.filter(v => v.id !== visitaId);
-  saveAll(all);
+export async function deleteTPVisita(tpId: string, visitaId: string): Promise<void> {
+  const { error } = await supabase
+    .from("tp_visite")
+    .delete()
+    .eq("id", visitaId)
+    .eq("tp_id", tpId);
+
+  if (error) {
+    console.error("[tp-store] deleteTPVisita error:", error);
+    throw new Error("Errore durante l'eliminazione della visita");
+  }
 }
 
-// Anagrafica import history
-export function getAnagraficaImportHistory(): AnagraficaImportMeta[] {
-  try {
-    const raw = localStorage.getItem(IMPORT_HISTORY_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
+// ─── Anagrafica Import History ────────────────────────────────────────────────
+
+export async function getAnagraficaImportHistory(): Promise<AnagraficaImportMeta[]> {
+  const { data, error } = await supabase
+    .from("anagrafica_import_history")
+    .select("*")
+    .order("import_date", { ascending: false });
+
+  if (error) {
+    console.error("[tp-store] getAnagraficaImportHistory error:", error);
+    return [];
+  }
+
+  return (data ?? []).map(row => ({
+    id: row.id as string,
+    date: row.import_date as string,
+    tpCount: Number(row.tp_count),
+  }));
 }
 
-export function addAnagraficaImportMeta(meta: AnagraficaImportMeta): void {
-  const history = getAnagraficaImportHistory();
-  history.push(meta);
-  localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+export async function addAnagraficaImportMeta(meta: Omit<AnagraficaImportMeta, "id">): Promise<void> {
+  const { error } = await supabase
+    .from("anagrafica_import_history")
+    .insert({ import_date: meta.date, tp_count: meta.tpCount });
+
+  if (error) console.error("[tp-store] addAnagraficaImportMeta error:", error);
 }
 
-export function removeAnagraficaImportMeta(index: number): void {
-  const history = getAnagraficaImportHistory();
-  history.splice(index, 1);
-  localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(history));
+export async function removeAnagraficaImportMeta(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("anagrafica_import_history")
+    .delete()
+    .eq("id", id);
+
+  if (error) console.error("[tp-store] removeAnagraficaImportMeta error:", error);
 }
+
+// ─── Visit Search ─────────────────────────────────────────────────────────────
 
 export interface VisitSearchResult {
   tpId: string;
@@ -159,31 +227,33 @@ export interface VisitSearchResult {
 }
 
 /** Search all visit notes across all TPs. Case-insensitive partial match. */
-export function searchAllVisite(query: string, tpNames: Record<string, string>): VisitSearchResult[] {
+export async function searchAllVisite(query: string, tpNames: Record<string, string>): Promise<VisitSearchResult[]> {
   if (!query.trim()) return [];
-  const all = loadAll();
-  const q = query.toLowerCase();
-  const results: VisitSearchResult[] = [];
 
-  for (const [tpId, data] of Object.entries(all)) {
-    for (const visita of data.visite) {
-      const noteLC = visita.note.toLowerCase();
-      const idx = noteLC.indexOf(q);
-      if (idx === -1) continue;
+  const { data, error } = await supabase
+    .from("tp_visite")
+    .select("*")
+    .ilike("note", `%${query}%`)
+    .order("data", { ascending: false });
 
-      const start = Math.max(0, idx - 30);
-      const end = Math.min(visita.note.length, idx + query.length + 30);
-      const snippet = (start > 0 ? "…" : "") + visita.note.slice(start, end) + (end < visita.note.length ? "…" : "");
-
-      results.push({
-        tpId,
-        tpNome: tpNames[tpId] || tpId,
-        visita,
-        matchSnippet: snippet,
-      });
-    }
+  if (error) {
+    console.error("[tp-store] searchAllVisite error:", error);
+    return [];
   }
 
-  results.sort((a, b) => b.visita.data.localeCompare(a.visita.data));
-  return results;
+  return (data ?? []).map(row => {
+    const note = row.note as string;
+    const q = query.toLowerCase();
+    const idx = note.toLowerCase().indexOf(q);
+    const start = Math.max(0, idx - 30);
+    const end = Math.min(note.length, idx + query.length + 30);
+    const snippet = (start > 0 ? "…" : "") + note.slice(start, end) + (end < note.length ? "…" : "");
+
+    return {
+      tpId: row.tp_id as string,
+      tpNome: tpNames[row.tp_id as string] || (row.tp_id as string),
+      visita: { id: row.id as string, data: row.data as string, rappresentante: row.rappresentante as string, note },
+      matchSnippet: snippet,
+    };
+  });
 }

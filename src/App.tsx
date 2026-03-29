@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useAuth } from "@/hooks/use-auth";
+import { migrateFromLocalStorage } from "@/lib/migrate-localStorage";
 import Layout from "@/components/DashboardLayout";
 import LoginPage from "@/pages/LoginPage";
 import HomePage from "@/pages/HomePage";
@@ -15,7 +16,7 @@ import PrioritaPage from "@/pages/PrioritaPage";
 import TopPerformerPage from "@/pages/TopPerformerPage";
 import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -48,30 +49,88 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 const queryClient = new QueryClient();
 
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground">Caricamento...</p>
+      </div>
+    </div>
+  );
+}
+
 function DashboardApp() {
-  const { user, login, logout, isAdmin } = useAuth();
+  // Run one-time localStorage → Supabase migration on first load
+  useEffect(() => {
+    migrateFromLocalStorage().catch(err => console.error("[App] Migration error:", err));
+  }, []);
+
+  const { user, login, logout, loading: authLoading } = useAuth();
   const {
     selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
     enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths, refresh,
+    loading: dashLoading,
   } = useDashboard();
 
+  // Show loading while auth or initial data is being fetched
+  if (authLoading || (user && dashLoading)) {
+    return <LoadingScreen />;
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={login} />;
+  }
+
   // Filter records by representative if user is a representative
-  const filteredRecords = useMemo(() => {
-    if (!user || user.role === "admin") return enrichedRecords;
+  const filteredRecords = (() => {
+    if (user.role === "admin") return enrichedRecords;
     if (!user.rappresentante) return [];
     return enrichedRecords.filter(r => r.rappresentante === user.rappresentante);
-  }, [enrichedRecords, user]);
+  })();
 
-  // Get unique rappresentanti from all data for settings
+  return <DashboardContent
+    user={user}
+    isAdmin={user.role === "admin"}
+    filteredRecords={filteredRecords}
+    selectedMonth={selectedMonth}
+    setSelectedMonth={setSelectedMonth}
+    uploadCSV={uploadCSV}
+    confirmUpload={confirmUpload}
+    hasGiacenza={hasGiacenza}
+    availableMonths={availableMonths}
+    resetData={resetData}
+    allMonths={allMonths}
+    refresh={refresh}
+    logout={logout}
+  />;
+}
+
+// Separate component to allow hooks to run after user is known
+function DashboardContent({
+  user, isAdmin, filteredRecords, selectedMonth, setSelectedMonth,
+  uploadCSV, confirmUpload, hasGiacenza, availableMonths, resetData,
+  allMonths, refresh, logout,
+}: {
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>;
+  isAdmin: boolean;
+  filteredRecords: ReturnType<typeof useDashboard>["enrichedRecords"];
+  selectedMonth: string;
+  setSelectedMonth: (m: string) => void;
+  uploadCSV: ReturnType<typeof useDashboard>["uploadCSV"];
+  confirmUpload: ReturnType<typeof useDashboard>["confirmUpload"];
+  hasGiacenza: boolean;
+  availableMonths: string[];
+  resetData: () => Promise<void>;
+  allMonths: ReturnType<typeof useDashboard>["allMonths"];
+  refresh: () => Promise<void>;
+  logout: () => Promise<void>;
+}) {
   const availableRappresentanti = useMemo(() => {
     const set = new Set<string>();
     allMonths.forEach(m => m.records.forEach(r => { if (r.rappresentante) set.add(r.rappresentante); }));
     return [...set].sort();
   }, [allMonths]);
-
-  if (!user) {
-    return <LoginPage onLogin={login} />;
-  }
 
   return (
     <Layout
@@ -88,17 +147,18 @@ function DashboardApp() {
       isAdmin={isAdmin}
       records={filteredRecords}
       hasGiacenzaProp={hasGiacenza}
+      allMonths={allMonths}
     >
       <Routes>
-        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
+        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} />} />
         <Route path="/touchpoints" element={<TPListPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
-        <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} />} />
+        <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} allMonths={allMonths} />} />
         <Route path="/rappresentanti" element={
           isAdmin
             ? <RappresentantiPage records={filteredRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />
             : <div className="glass-card p-8 text-center text-muted-foreground">Accesso riservato al Sales Manager.</div>
         } />
-        <Route path="/priorita" element={<PrioritaPage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} />} />
+        <Route path="/priorita" element={<PrioritaPage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} />} />
         <Route path="/top-performer" element={<TopPerformerPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/impostazioni" element={
           <SettingsPage

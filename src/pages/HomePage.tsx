@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { TPWithMetrics } from "@/types/dashboard";
+import { TPWithMetrics, MonthData } from "@/types/dashboard";
 import { formatCurrency, formatPercent, formatMonth, enrichRecords } from "@/lib/calculations";
-import { getAllMonthsData, getPreviousMonth } from "@/lib/store";
 import EmptyState from "@/components/EmptyState";
 import { DollarSign, Store, TrendingDown, Percent, Package, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import {
@@ -14,6 +13,7 @@ interface Props {
   records: TPWithMetrics[];
   hasGiacenza: boolean;
   selectedMonth: string;
+  allMonths: MonthData[];
 }
 
 // Clickable KPI Card
@@ -59,9 +59,8 @@ const chartTooltipStyle = {
   color: "hsl(var(--card-foreground))",
 };
 
-export default function HomePage({ records, hasGiacenza, selectedMonth }: Props) {
+export default function HomePage({ records, hasGiacenza, selectedMonth, allMonths }: Props) {
   const navigate = useNavigate();
-  const allMonths = useMemo(() => getAllMonthsData(), [records]);
 
   // Revenue trend (all months)
   const trendData = useMemo(() => allMonths.map(m => {
@@ -113,11 +112,13 @@ export default function HomePage({ records, hasGiacenza, selectedMonth }: Props)
     return { totalFatturato, totalPezzi, avgStr, activeTP, dormientTP };
   }, [records, hasGiacenza]);
 
-  // PERF: memoize previous-month comparison — getPreviousMonth reads localStorage
-  const prevMonthData = useMemo(
-    () => selectedMonth ? getPreviousMonth(selectedMonth) : undefined,
-    [selectedMonth]
-  );
+  // Derive previous month from allMonths prop (already in React state, no async needed)
+  const prevMonthData = useMemo(() => {
+    if (!selectedMonth) return undefined;
+    const idx = allMonths.findIndex(m => m.mese === selectedMonth);
+    if (idx <= 0) return undefined;
+    return allMonths[idx - 1];
+  }, [selectedMonth, allMonths]);
   const trends = useMemo(() => {
     const prevFatturato = prevMonthData ? prevMonthData.records.reduce((s, r) => s + r.venduto_euro, 0) : null;
     const prevPezzi = prevMonthData ? prevMonthData.records.reduce((s, r) => s + r.venduto_pezzi, 0) : null;

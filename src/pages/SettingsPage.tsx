@@ -1,11 +1,11 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { UserProfile, UserRole } from "@/types/auth";
-import { getUsers, addUser, updateUser, toggleUserEnabled } from "@/lib/auth-store";
+import { getUsers, addUser, toggleUserEnabled } from "@/lib/auth-store";
 import { getImportHistory, removeImportMeta, getABCThresholds, saveABCThresholds, getRappresentantiMap, saveRappresentantiMap } from "@/lib/settings-store";
 import { deleteMonth, getMonthData } from "@/lib/store";
 import { formatMonth, formatCurrency } from "@/lib/calculations";
@@ -28,22 +28,26 @@ interface Props {
   currentUserId: string | null;
   onDataChange: () => void;
   availableRappresentanti: string[];
-  onUpload: (csv: string) => UploadResult;
-  onConfirmUpload: (csv: string) => void;
+  onUpload: (csv: string) => Promise<UploadResult>;
+  onConfirmUpload: (csv: string) => Promise<void>;
 }
 
 // ===================== USERS TAB =====================
 function UsersTab({ isAdmin, currentUserId, availableRappresentanti }: { isAdmin: boolean; currentUserId: string | null; availableRappresentanti: string[] }) {
-  const [users, setUsers] = useState<UserProfile[]>(getUsers);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newUser, setNewUser] = useState({ username: "", password: "", displayName: "", role: "rappresentante" as UserRole, rappresentante: "" });
 
-  const refreshUsers = () => setUsers(getUsers());
+  useEffect(() => {
+    getUsers().then(setUsers).catch(() => {});
+  }, []);
 
-  const handleAdd = () => {
+  const refreshUsers = () => getUsers().then(setUsers).catch(() => {});
+
+  const handleAdd = async () => {
     try {
-      addUser(newUser);
-      refreshUsers();
+      await addUser(newUser);
+      await refreshUsers();
       setShowAdd(false);
       setNewUser({ username: "", password: "", displayName: "", role: "rappresentante", rappresentante: "" });
       toast.success("Utente creato");
@@ -52,9 +56,9 @@ function UsersTab({ isAdmin, currentUserId, availableRappresentanti }: { isAdmin
     }
   };
 
-  const handleToggle = (id: string) => {
-    toggleUserEnabled(id);
-    refreshUsers();
+  const handleToggle = async (id: string) => {
+    await toggleUserEnabled(id);
+    await refreshUsers();
   };
 
   if (!isAdmin) {
@@ -87,7 +91,7 @@ function UsersTab({ isAdmin, currentUserId, availableRappresentanti }: { isAdmin
               <div className="text-xs text-muted-foreground font-mono mt-0.5">@{u.username}</div>
               {u.rappresentante && <div className="text-xs text-muted-foreground mt-0.5">Collegato a: {u.rappresentante}</div>}
             </div>
-            {u.id !== "admin-001" && (
+            {u.username !== "admin" && (
               <Button variant="ghost" size="icon" onClick={() => handleToggle(u.id)} title={u.enabled ? "Disabilita" : "Abilita"}>
                 {u.enabled ? <UserX className="w-4 h-4 text-destructive" /> : <UserCheck className="w-4 h-4 text-primary" />}
               </Button>
@@ -136,20 +140,29 @@ function UsersTab({ isAdmin, currentUserId, availableRappresentanti }: { isAdmin
 
 // ===================== IMPORT HISTORY TAB =====================
 function ImportHistoryTab({ isAdmin, onDataChange }: { isAdmin: boolean; onDataChange: () => void }) {
-  const [history, setHistory] = useState<ImportMeta[]>(getImportHistory);
+  const [history, setHistory] = useState<ImportMeta[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const handleDelete = (mese: string) => {
-    deleteMonth(mese);
-    removeImportMeta(mese);
-    setHistory(getImportHistory());
-    setConfirmDelete(null);
-    onDataChange();
-    toast.success(`Dati di ${formatMonth(mese)} eliminati`);
+  useEffect(() => {
+    getImportHistory().then(setHistory).catch(() => {});
+  }, []);
+
+  const handleDelete = async (mese: string) => {
+    try {
+      await deleteMonth(mese);
+      await removeImportMeta(mese);
+      const updated = await getImportHistory();
+      setHistory(updated);
+      setConfirmDelete(null);
+      onDataChange();
+      toast.success(`Dati di ${formatMonth(mese)} eliminati`);
+    } catch {
+      toast.error("Errore durante l'eliminazione dei dati");
+    }
   };
 
-  const handleExport = (mese: string) => {
-    const data = getMonthData(mese);
+  const handleExport = async (mese: string) => {
+    const data = await getMonthData(mese);
     if (!data) return;
     const header = "tp_id;tp_nome;tp_tipo;tp_zona;rappresentante;venduto_pezzi;venduto_euro;giacenza_pezzi;mese\n";
     const rows = data.records.map(r =>
@@ -244,10 +257,14 @@ function ImportHistoryTab({ isAdmin, onDataChange }: { isAdmin: boolean; onDataC
 // ===================== ANAGRAFICA TP TAB =====================
 function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [importHistory, setImportHistory] = useState<AnagraficaImportMeta[]>(getAnagraficaImportHistory);
+  const [importHistory, setImportHistory] = useState<AnagraficaImportMeta[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingRows, setPendingRows] = useState<any[]>([]);
   const [pendingSummary, setPendingSummary] = useState({ total: 0, conflicts: 0, skipped: 0 });
+
+  useEffect(() => {
+    getAnagraficaImportHistory().then(setImportHistory).catch(() => {});
+  }, []);
 
   const readFile = useCallback((file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -274,7 +291,6 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // FIX: wrap readFile in try/catch — unhandled rejection on timeout/encoding error silently breaks the UI
     try {
       const text = await readFile(file);
       const result = parseAnagraficaCSV(text);
@@ -291,8 +307,7 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
         return;
       }
 
-      // Check for conflicts
-      const existingIds = getExistingAnagraficaIds();
+      const existingIds = await getExistingAnagraficaIds();
       const conflicts = result.rows.filter(r => existingIds.includes(r.tp_id));
 
       if (conflicts.length > 0) {
@@ -300,7 +315,7 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
         setPendingSummary({ total: result.rows.length, conflicts: conflicts.length, skipped: result.skippedRows });
         setShowConfirm(true);
       } else {
-        doImport(result.rows, false, result.skippedRows);
+        await doImport(result.rows, false, result.skippedRows);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Errore durante la lettura del file");
@@ -308,33 +323,35 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
     if (fileRef.current) fileRef.current.value = "";
   }, [readFile]);
 
-  const doImport = (rows: any[], overwrite: boolean, skipped: number) => {
-    const { updated, created } = bulkImportAnagrafica(rows, overwrite);
-    const skippedCount = overwrite ? 0 : rows.length - updated - created;
+  const doImport = async (rows: any[], overwrite: boolean, skipped: number) => {
+    try {
+      const { updated, created } = await bulkImportAnagrafica(rows, overwrite);
+      const skippedCount = overwrite ? 0 : rows.length - updated - created;
 
-    addAnagraficaImportMeta({
-      date: new Date().toISOString(),
-      tpCount: updated + created,
-    });
-    setImportHistory(getAnagraficaImportHistory());
+      await addAnagraficaImportMeta({ date: new Date().toISOString(), tpCount: updated + created });
+      const updated_history = await getAnagraficaImportHistory();
+      setImportHistory(updated_history);
 
-    const parts = [];
-    if (created > 0) parts.push(`${created} TP nuovi`);
-    if (updated > 0) parts.push(`${updated} TP aggiornati`);
-    if (skipped > 0) parts.push(`${skipped} righe ignorate`);
-    if (skippedCount > 0) parts.push(`${skippedCount} TP già esistenti non sovrascritti`);
+      const parts = [];
+      if (created > 0) parts.push(`${created} TP nuovi`);
+      if (updated > 0) parts.push(`${updated} TP aggiornati`);
+      if (skipped > 0) parts.push(`${skipped} righe ignorate`);
+      if (skippedCount > 0) parts.push(`${skippedCount} TP già esistenti non sovrascritti`);
 
-    toast.success(`Import completato: ${parts.join(", ")}`);
+      toast.success(`Import completato: ${parts.join(", ")}`);
+    } catch {
+      toast.error("Errore durante l'import dell'anagrafica");
+    }
   };
 
-  const handleConfirmOverwrite = () => {
-    doImport(pendingRows, true, pendingSummary.skipped);
+  const handleConfirmOverwrite = async () => {
+    await doImport(pendingRows, true, pendingSummary.skipped);
     setShowConfirm(false);
     setPendingRows([]);
   };
 
-  const handleConfirmSkip = () => {
-    doImport(pendingRows, false, pendingSummary.skipped);
+  const handleConfirmSkip = async () => {
+    await doImport(pendingRows, false, pendingSummary.skipped);
     setShowConfirm(false);
     setPendingRows([]);
   };
@@ -348,9 +365,10 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
     URL.revokeObjectURL(url);
   };
 
-  const handleDeleteImport = (index: number) => {
-    removeAnagraficaImportMeta(index);
-    setImportHistory(getAnagraficaImportHistory());
+  const handleDeleteImport = async (id: string) => {
+    await removeAnagraficaImportMeta(id);
+    const updated = await getAnagraficaImportHistory();
+    setImportHistory(updated);
     toast.success("Record import eliminato");
   };
 
@@ -369,7 +387,6 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
         Carica un CSV con i dati anagrafici dei TP. Il join con i dati vendite avviene tramite <code className="font-mono bg-muted px-1 rounded">tp_id</code>.
       </p>
 
-      {/* Actions */}
       <div className="flex flex-wrap gap-2">
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
         <Button size="sm" variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
@@ -380,7 +397,6 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
         </Button>
       </div>
 
-      {/* Import history */}
       {importHistory.length > 0 && (
         <div className="glass-card overflow-hidden">
           <table className="w-full text-sm">
@@ -392,14 +408,14 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {importHistory.map((h, i) => (
-                <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+              {importHistory.map(h => (
+                <tr key={h.id} className="border-b border-border/50 hover:bg-muted/30">
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {new Date(h.date).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{h.tpCount}</td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteImport(i)} title="Elimina">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteImport(h.id)} title="Elimina">
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </td>
@@ -417,7 +433,6 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {/* Confirm overwrite dialog */}
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -439,15 +454,25 @@ function AnagraficaTPTab({ isAdmin }: { isAdmin: boolean }) {
 
 // ===================== CONFIG TAB =====================
 function ConfigTab({ isAdmin, availableRappresentanti }: { isAdmin: boolean; availableRappresentanti: string[] }) {
-  const [thresholds, setThresholds] = useState<ABCThresholds>(getABCThresholds);
-  const [rappMap, setRappMap] = useState<Record<string, string>>(getRappresentantiMap);
+  const [thresholds, setThresholds] = useState<ABCThresholds>({ aMin: 60, bMin: 40 });
+  const [rappMap, setRappMap] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
 
-  const handleSave = () => {
-    saveABCThresholds(thresholds);
-    saveRappresentantiMap(rappMap);
-    setDirty(false);
-    toast.success("Configurazione salvata");
+  useEffect(() => {
+    Promise.all([getABCThresholds(), getRappresentantiMap()]).then(([t, m]) => {
+      setThresholds(t);
+      setRappMap(m);
+    }).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      await Promise.all([saveABCThresholds(thresholds), saveRappresentantiMap(rappMap)]);
+      setDirty(false);
+      toast.success("Configurazione salvata");
+    } catch {
+      toast.error("Errore durante il salvataggio della configurazione");
+    }
   };
 
   if (!isAdmin) {
@@ -506,7 +531,7 @@ function ConfigTab({ isAdmin, availableRappresentanti }: { isAdmin: boolean; ava
 }
 
 // ===================== SALES IMPORT TAB =====================
-function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { isAdmin: boolean; onUpload: (csv: string) => UploadResult; onConfirmUpload: (csv: string) => void; onDataChange: () => void }) {
+function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { isAdmin: boolean; onUpload: (csv: string) => Promise<UploadResult>; onConfirmUpload: (csv: string) => Promise<void>; onDataChange: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [pendingCsv, setPendingCsv] = useState("");
@@ -551,17 +576,14 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // FIX: wrap readFile in try/catch — unhandled rejection on timeout/encoding error silently breaks the UI
     try {
       const text = await readFile(file);
 
       if (importMode === "overwrite") {
-        // Show overwrite warning before proceeding
         setPendingFile(text);
         setOverwriteWarning(true);
       } else {
-        // Append mode: use existing logic
-        const result = onUpload(text);
+        const result = await onUpload(text);
         if (result.needsConfirm) {
           setPendingCsv(text);
           setConfirmDialog(true);
@@ -579,16 +601,16 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
     if (fileRef.current) fileRef.current.value = "";
   }, [readFile, onUpload, onDataChange, importMode]);
 
-  const handleConfirm = () => {
-    onConfirmUpload(pendingCsv);
+  const handleConfirm = async () => {
+    await onConfirmUpload(pendingCsv);
     setConfirmDialog(false);
     onDataChange();
     toast.success("Dati sovrascritti con successo");
   };
 
-  const handleOverwriteConfirm = () => {
+  const handleOverwriteConfirm = async () => {
     if (!pendingFile) return;
-    onConfirmUpload(pendingFile);
+    await onConfirmUpload(pendingFile);
     setOverwriteWarning(false);
     setPendingFile(null);
     onDataChange();
@@ -607,11 +629,10 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
     <div className="space-y-4">
       <h3 className="text-sm font-semibold">Import dati vendite mensili</h3>
       <p className="text-xs text-muted-foreground">
-        Carica un CSV con i dati di vendita mensili. Colonne richieste: <code className="font-mono bg-muted px-1 rounded">tp_id, tp_nome, tp_tipo, tp_zona, rappresentante, venduto_pezzi, venduto_euro, mese</code>. 
+        Carica un CSV con i dati di vendita mensili. Colonne richieste: <code className="font-mono bg-muted px-1 rounded">tp_id, tp_nome, tp_tipo, tp_zona, rappresentante, venduto_pezzi, venduto_euro, mese</code>.
         Colonna opzionale: <code className="font-mono bg-muted px-1 rounded">giacenza_pezzi</code>.
       </p>
 
-      {/* Import mode selector */}
       <div className="glass-card p-4 space-y-3">
         <h4 className="text-sm font-medium">Modalità di import</h4>
         <div className="flex flex-col gap-2">
@@ -660,7 +681,6 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         <p>Se il mese è già presente, verrà chiesta conferma prima di sovrascrivere.</p>
       </div>
 
-      {/* Confirm dialog for append mode (month exists) */}
       <Dialog open={confirmDialog} onOpenChange={setConfirmDialog}>
         <DialogContent>
           <DialogHeader>
@@ -676,7 +696,6 @@ function SalesImportTab({ isAdmin, onUpload, onConfirmUpload, onDataChange }: { 
         </DialogContent>
       </Dialog>
 
-      {/* Overwrite mode warning */}
       <Dialog open={overwriteWarning} onOpenChange={setOverwriteWarning}>
         <DialogContent>
           <DialogHeader>

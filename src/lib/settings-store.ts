@@ -1,68 +1,144 @@
+import { supabase } from "@/lib/supabase";
 import { DashboardSettings, ImportMeta, ABCThresholds, DEFAULT_THRESHOLDS } from "@/types/settings";
 
-const SETTINGS_KEY = "como1907_settings";
+// ─── ABC Thresholds (settings table, global row with user_id IS NULL) ──────
 
-export function loadSettings(): DashboardSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const s = JSON.parse(raw);
-      return {
-        abcThresholds: s.abcThresholds ?? DEFAULT_THRESHOLDS,
-        rappresentantiMap: s.rappresentantiMap ?? {},
-        importHistory: s.importHistory ?? [],
-      };
-    }
-  } catch {}
-  return { abcThresholds: DEFAULT_THRESHOLDS, rappresentantiMap: {}, importHistory: [] };
-}
+export async function getABCThresholds(): Promise<ABCThresholds> {
+  const { data, error } = await supabase
+    .from("settings")
+    .select("abc_a_min, abc_b_min")
+    .is("user_id", null)
+    .maybeSingle();
 
-function saveSettings(s: DashboardSettings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-}
-
-export function saveABCThresholds(t: ABCThresholds): void {
-  const s = loadSettings();
-  s.abcThresholds = t;
-  saveSettings(s);
-}
-
-export function getABCThresholds(): ABCThresholds {
-  return loadSettings().abcThresholds;
-}
-
-export function addImportMeta(meta: ImportMeta): void {
-  const s = loadSettings();
-  const idx = s.importHistory.findIndex(m => m.mese === meta.mese);
-  if (idx >= 0) {
-    s.importHistory[idx] = meta;
-  } else {
-    s.importHistory.push(meta);
-    s.importHistory.sort((a, b) => a.mese.localeCompare(b.mese));
+  if (error) {
+    console.error("[settings-store] getABCThresholds error:", error);
+    return DEFAULT_THRESHOLDS;
   }
-  saveSettings(s);
+
+  if (!data) return DEFAULT_THRESHOLDS;
+  return { aMin: Number(data.abc_a_min), bMin: Number(data.abc_b_min) };
 }
 
-export function removeImportMeta(mese: string): void {
-  const s = loadSettings();
-  s.importHistory = s.importHistory.filter(m => m.mese !== mese);
-  saveSettings(s);
+export async function saveABCThresholds(t: ABCThresholds): Promise<void> {
+  const existing = await supabase
+    .from("settings")
+    .select("id")
+    .is("user_id", null)
+    .maybeSingle();
+
+  if (existing.data) {
+    const { error } = await supabase
+      .from("settings")
+      .update({ abc_a_min: t.aMin, abc_b_min: t.bMin })
+      .eq("id", existing.data.id);
+    if (error) console.error("[settings-store] saveABCThresholds update error:", error);
+  } else {
+    const { error } = await supabase
+      .from("settings")
+      .insert({ user_id: null, abc_a_min: t.aMin, abc_b_min: t.bMin });
+    if (error) console.error("[settings-store] saveABCThresholds insert error:", error);
+  }
 }
 
-export function getImportHistory(): ImportMeta[] {
-  return loadSettings().importHistory;
+// ─── Rappresentanti Map ──────────────────────────────────────────────────────
+
+export async function getRappresentantiMap(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from("rappresentanti_map")
+    .select("csv_value, display_name");
+
+  if (error) {
+    console.error("[settings-store] getRappresentantiMap error:", error);
+    return {};
+  }
+
+  const map: Record<string, string> = {};
+  for (const row of data ?? []) {
+    map[row.csv_value] = row.display_name;
+  }
+  return map;
 }
 
-export function getRappresentantiMap(): Record<string, string> {
-  return loadSettings().rappresentantiMap;
+export async function saveRappresentantiMap(map: Record<string, string>): Promise<void> {
+  // Delete all then re-insert (simplest approach for a small map)
+  const { error: delError } = await supabase
+    .from("rappresentanti_map")
+    .delete()
+    .neq("csv_value", "");
+  if (delError) {
+    console.error("[settings-store] saveRappresentantiMap delete error:", delError);
+    return;
+  }
+
+  const rows = Object.entries(map)
+    .filter(([, display]) => display.trim() !== "")
+    .map(([csv_value, display_name]) => ({ csv_value, display_name }));
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from("rappresentanti_map").insert(rows);
+    if (error) console.error("[settings-store] saveRappresentantiMap insert error:", error);
+  }
 }
 
-export function saveRappresentantiMap(map: Record<string, string>): void {
-  const s = loadSettings();
-  s.rappresentantiMap = map;
-  saveSettings(s);
+// ─── Import History ──────────────────────────────────────────────────────────
+
+export async function getImportHistory(): Promise<ImportMeta[]> {
+  const { data, error } = await supabase
+    .from("import_history")
+    .select("*")
+    .order("mese", { ascending: true });
+
+  if (error) {
+    console.error("[settings-store] getImportHistory error:", error);
+    return [];
+  }
+
+  return (data ?? []).map(row => ({
+    mese: row.mese as string,
+    uploadDate: row.upload_date as string,
+    tpCount: Number(row.tp_count),
+    totalFatturato: Number(row.total_fatturato),
+  }));
 }
 
-export function clearSettings(): void {
-  localStorage.removeItem(SETTINGS_KEY);
+export async function addImportMeta(meta: ImportMeta): Promise<void> {
+  const { error } = await supabase
+    .from("import_history")
+    .upsert(
+      {
+        mese: meta.mese,
+        upload_date: meta.uploadDate,
+        tp_count: meta.tpCount,
+        total_fatturato: meta.totalFatturato,
+      },
+      { onConflict: "mese" }
+    );
+  if (error) console.error("[settings-store] addImportMeta error:", error);
+}
+
+export async function removeImportMeta(mese: string): Promise<void> {
+  const { error } = await supabase
+    .from("import_history")
+    .delete()
+    .eq("mese", mese);
+  if (error) console.error("[settings-store] removeImportMeta error:", error);
+}
+
+// ─── Full settings load (used by some pages) ─────────────────────────────────
+
+export async function loadSettings(): Promise<DashboardSettings> {
+  const [abcThresholds, rappresentantiMap, importHistory] = await Promise.all([
+    getABCThresholds(),
+    getRappresentantiMap(),
+    getImportHistory(),
+  ]);
+  return { abcThresholds, rappresentantiMap, importHistory };
+}
+
+export async function clearSettings(): Promise<void> {
+  await Promise.all([
+    supabase.from("import_history").delete().neq("mese", ""),
+    supabase.from("rappresentanti_map").delete().neq("csv_value", ""),
+    // Keep settings thresholds as-is (no clear for settings)
+  ]);
 }

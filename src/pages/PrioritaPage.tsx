@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { TPWithMetrics } from "@/types/dashboard";
-import { getAllMonthsData } from "@/lib/store";
+import { TPWithMetrics, MonthData } from "@/types/dashboard";
 import { formatCurrency, formatPercent, formatMonth } from "@/lib/calculations";
 import { CategoryBadge, TrendIcon } from "@/components/MetricBadges";
 import { Button } from "@/components/ui/button";
@@ -11,10 +10,10 @@ interface Props {
   records: TPWithMetrics[];
   hasGiacenza: boolean;
   selectedMonth: string;
+  allMonths: MonthData[];
 }
 
-export default function PrioritaPage({ records, hasGiacenza, selectedMonth }: Props) {
-  const allMonths = getAllMonthsData();
+export default function PrioritaPage({ records, hasGiacenza, selectedMonth, allMonths }: Props) {
 
   const priorityList = useMemo(() => {
     if (!hasGiacenza) return [];

@@ -5,20 +5,28 @@ import { UserProfile } from "@/types/auth";
 import { LogIn } from "lucide-react";
 
 interface Props {
-  onLogin: (username: string, password: string) => UserProfile | null;
+  onLogin: (username: string, password: string) => Promise<UserProfile | null>;
 }
 
 export default function LoginPage({ onLogin }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const user = onLogin(username, password);
-    if (!user) {
-      setError("Credenziali non valide o account disabilitato");
+    setLoading(true);
+    try {
+      const user = await onLogin(username, password);
+      if (!user) {
+        setError("Credenziali non valide o account disabilitato");
+      }
+    } catch {
+      setError("Errore durante il login. Riprova.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,8 +62,8 @@ export default function LoginPage({ onLogin }: Props) {
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full gap-2">
-            <LogIn className="w-4 h-4" /> Accedi
+          <Button type="submit" className="w-full gap-2" disabled={loading}>
+            <LogIn className="w-4 h-4" /> {loading ? "Accesso in corso..." : "Accedi"}
           </Button>
         </form>
 

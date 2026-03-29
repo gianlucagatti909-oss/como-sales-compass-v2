@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, Link, useNavigate, Navigate } from "react-router-dom";
-import { getAllMonthsData, getPreviousMonth } from "@/lib/store";
+import { MonthData } from "@/types/dashboard";
 import { calcSTR, calcCategory, calcTrend, formatCurrency, formatPercent, formatMonth } from "@/lib/calculations";
 import { CategoryBadge, TrendIcon, TrendBadge } from "@/components/MetricBadges";
 import { getTPLocal, saveTPAnagrafica, addTPVisita, deleteTPVisita, TPAnagrafica, TPVisita } from "@/lib/tp-store";
@@ -14,12 +14,30 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 
-export default function TPDetailPage({ hasGiacenza }: { hasGiacenza: boolean }) {
+export default function TPDetailPage({ hasGiacenza, allMonths }: { hasGiacenza: boolean; allMonths: MonthData[] }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const allMonths = getAllMonthsData();
 
-  // Build history
+  // Local TP data loaded async on mount
+  const [anagrafica, setAnagrafica] = useState<TPAnagrafica>({});
+  const [visite, setVisite] = useState<TPVisita[]>([]);
+  const [localLoading, setLocalLoading] = useState(true);
+  const [showVisitForm, setShowVisitForm] = useState(false);
+  const [visitDate, setVisitDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [visitNote, setVisitNote] = useState("");
+  const [visitRapp, setVisitRapp] = useState("");
+
+  useEffect(() => {
+    if (!id) return;
+    setLocalLoading(true);
+    getTPLocal(id).then(data => {
+      setAnagrafica(data.anagrafica);
+      setVisite(data.visite);
+      setLocalLoading(false);
+    }).catch(() => setLocalLoading(false));
+  }, [id]);
+
+  // Build history from allMonths prop (no async needed — already in React state)
   const history = useMemo(() => allMonths.map(m => {
     const rec = m.records.find(r => r.tp_id === id);
     if (!rec) return { mese: m.mese, meseLabel: formatMonth(m.mese), fatturato: null, pezzi: null, giacenza: null, str: null, categoria: null, record: null };
@@ -38,23 +56,13 @@ export default function TPDetailPage({ hasGiacenza }: { hasGiacenza: boolean }) 
     return null;
   }, [history, latest]);
 
-  // Local data (anagrafica + visite)
-  const [localData, setLocalData] = useState(() => getTPLocal(id ?? ""));
-  const [anagrafica, setAnagrafica] = useState<TPAnagrafica>(localData.anagrafica);
-  const [visite, setVisite] = useState<TPVisita[]>(localData.visite);
-  const [showVisitForm, setShowVisitForm] = useState(false);
-  const [visitDate, setVisitDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [visitNote, setVisitNote] = useState("");
-  const [visitRapp, setVisitRapp] = useState("");
-
-  // No data warning
   const hasRecentData = useMemo(() => {
     const sorted = allMonths.map(m => m.mese).sort();
     const last2 = sorted.slice(-2);
     return last2.some(mese => history.find(h => h.mese === mese && h.record !== null));
   }, [allMonths, history]);
 
-  // Guard: id must be defined (useParams can return undefined if route is misconfigured)
+  // Guard: id must be defined
   if (!id) return <Navigate to="/touchpoints" replace />;
 
   if (!latest?.record) {
@@ -95,26 +103,38 @@ export default function TPDetailPage({ hasGiacenza }: { hasGiacenza: boolean }) 
   const sparkData = history.filter(h => h.fatturato !== null).slice(-6);
 
   // Save anagrafica
-  const handleSaveAnagrafica = () => {
-    saveTPAnagrafica(id!, anagrafica);
-    toast.success("Anagrafica salvata");
+  const handleSaveAnagrafica = async () => {
+    try {
+      await saveTPAnagrafica(id!, anagrafica);
+      toast.success("Anagrafica salvata");
+    } catch {
+      toast.error("Errore durante il salvataggio dell'anagrafica");
+    }
   };
 
   // Add visit
-  const handleAddVisit = () => {
+  const handleAddVisit = async () => {
     if (!visitNote.trim()) { toast.error("Inserisci una nota"); return; }
-    const v = addTPVisita(id!, { data: visitDate, rappresentante: visitRapp || tp.rappresentante, note: visitNote });
-    setVisite([v, ...visite]);
-    setShowVisitForm(false);
-    setVisitNote("");
-    setVisitRapp("");
-    toast.success("Visita aggiunta");
+    try {
+      const v = await addTPVisita(id!, { data: visitDate, rappresentante: visitRapp || tp.rappresentante, note: visitNote });
+      setVisite([v, ...visite]);
+      setShowVisitForm(false);
+      setVisitNote("");
+      setVisitRapp("");
+      toast.success("Visita aggiunta");
+    } catch {
+      toast.error("Errore durante il salvataggio della visita");
+    }
   };
 
-  const handleDeleteVisit = (vid: string) => {
-    deleteTPVisita(id!, vid);
-    setVisite(visite.filter(v => v.id !== vid));
-    toast.success("Visita eliminata");
+  const handleDeleteVisit = async (vid: string) => {
+    try {
+      await deleteTPVisita(id!, vid);
+      setVisite(visite.filter(v => v.id !== vid));
+      toast.success("Visita eliminata");
+    } catch {
+      toast.error("Errore durante l'eliminazione della visita");
+    }
   };
 
   // Export CSV for this TP
@@ -255,34 +275,38 @@ export default function TPDetailPage({ hasGiacenza }: { hasGiacenza: boolean }) 
 
         {/* ===== ANAGRAFICA ===== */}
         <TabsContent value="anagrafica" className="space-y-4">
-          <div className="glass-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold">Informazioni TP</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" /> Indirizzo</label>
-                <Input value={anagrafica.indirizzo ?? ""} onChange={e => setAnagrafica({ ...anagrafica, indirizzo: e.target.value })} placeholder="Via, Città..." />
+          {localLoading ? (
+            <div className="glass-card p-8 text-center text-muted-foreground text-sm">Caricamento anagrafica...</div>
+          ) : (
+            <div className="glass-card p-5 space-y-4">
+              <h3 className="text-sm font-semibold">Informazioni TP</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" /> Indirizzo</label>
+                  <Input value={anagrafica.indirizzo ?? ""} onChange={e => setAnagrafica({ ...anagrafica, indirizzo: e.target.value })} placeholder="Via, Città..." />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" /> Nome referente</label>
+                  <Input value={anagrafica.referenteNome ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteNome: e.target.value })} placeholder="Nome e cognome" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> Telefono</label>
+                  <Input value={anagrafica.referenteTelefono ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteTelefono: e.target.value })} placeholder="+39..." />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" /> Email</label>
+                  <Input value={anagrafica.referenteEmail ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteEmail: e.target.value })} placeholder="email@..." />
+                </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" /> Nome referente</label>
-                <Input value={anagrafica.referenteNome ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteNome: e.target.value })} placeholder="Nome e cognome" />
+                <label className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="w-3 h-3" /> Note generali</label>
+                <Textarea value={anagrafica.note ?? ""} onChange={e => setAnagrafica({ ...anagrafica, note: e.target.value })} placeholder="Note sul touchpoint..." rows={3} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> Telefono</label>
-                <Input value={anagrafica.referenteTelefono ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteTelefono: e.target.value })} placeholder="+39..." />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" /> Email</label>
-                <Input value={anagrafica.referenteEmail ?? ""} onChange={e => setAnagrafica({ ...anagrafica, referenteEmail: e.target.value })} placeholder="email@..." />
-              </div>
+              <Button size="sm" onClick={handleSaveAnagrafica} className="gap-2">
+                <Save className="w-4 h-4" /> Salva anagrafica
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="w-3 h-3" /> Note generali</label>
-              <Textarea value={anagrafica.note ?? ""} onChange={e => setAnagrafica({ ...anagrafica, note: e.target.value })} placeholder="Note sul touchpoint..." rows={3} />
-            </div>
-            <Button size="sm" onClick={handleSaveAnagrafica} className="gap-2">
-              <Save className="w-4 h-4" /> Salva anagrafica
-            </Button>
-          </div>
+          )}
         </TabsContent>
 
         {/* ===== VISITE ===== */}
@@ -294,7 +318,9 @@ export default function TPDetailPage({ hasGiacenza }: { hasGiacenza: boolean }) 
             </Button>
           </div>
 
-          {visite.length === 0 ? (
+          {localLoading ? (
+            <div className="glass-card p-8 text-center text-muted-foreground text-sm">Caricamento visite...</div>
+          ) : visite.length === 0 ? (
             <div className="glass-card p-8 text-center text-muted-foreground text-sm">
               Nessuna visita registrata
             </div>

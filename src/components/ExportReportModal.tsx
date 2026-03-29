@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FileText, User } from "lucide-react";
-import { TPWithMetrics } from "@/types/dashboard";
+import { TPWithMetrics, MonthData } from "@/types/dashboard";
 import { generateReport } from "@/lib/pdf-report";
 import { toast } from "sonner";
 import { useMemo } from "react";
@@ -12,9 +12,10 @@ interface Props {
   records: TPWithMetrics[];
   selectedMonth: string;
   hasGiacenza: boolean;
+  allMonths: MonthData[];
 }
 
-export default function ExportReportModal({ open, onOpenChange, records, selectedMonth, hasGiacenza }: Props) {
+export default function ExportReportModal({ open, onOpenChange, records, selectedMonth, hasGiacenza, allMonths }: Props) {
   const rappresentanti = useMemo(() => {
     const set = new Set<string>();
     records.forEach(r => { if (r.rappresentante?.trim()) set.add(r.rappresentante.trim()); });
@@ -23,7 +24,7 @@ export default function ExportReportModal({ open, onOpenChange, records, selecte
 
   const handleExport = (filterRep?: string) => {
     try {
-      generateReport(records, selectedMonth, hasGiacenza, filterRep);
+      generateReport(records, selectedMonth, hasGiacenza, allMonths, filterRep);
       toast.success(`Report ${filterRep || "generale"} scaricato`);
       onOpenChange(false);
     } catch (e) {

@@ -1,106 +1,137 @@
-import { AuthState, UserProfile, UserRole } from "@/types/auth";
+import bcrypt from "bcryptjs";
+import { supabase } from "@/lib/supabase";
+import { UserProfile, UserRole } from "@/types/auth";
 
-const AUTH_KEY = "como1907_auth";
+const SESSION_KEY = "como1907_session";
 
-const DEFAULT_ADMIN: UserProfile = {
-  id: "admin-001",
-  username: "admin",
-  password: "admin",
-  role: "admin",
-  displayName: "Sales Manager",
-  enabled: true,
-};
-
-const GIANLUCA_ADMIN: UserProfile = {
-  id: "admin-002",
-  username: "gianlucagatti909@gmail.com",
-  password: "admin",
-  role: "admin",
-  displayName: "Gianluca Gatti",
-  enabled: true,
-};
-
-export function loadAuth(): AuthState {
-  try {
-    const raw = localStorage.getItem(AUTH_KEY);
-    if (raw) {
-      const state = JSON.parse(raw) as AuthState;
-      if (!state || !Array.isArray(state.users)) {
-        throw new Error("Auth state malformed");
-      }
-      // Ensure default admins always exist
-      if (!state.users.some(u => u.id === DEFAULT_ADMIN.id)) {
-        state.users.unshift(DEFAULT_ADMIN);
-      }
-      if (!state.users.some(u => u.id === GIANLUCA_ADMIN.id)) {
-        state.users.splice(1, 0, GIANLUCA_ADMIN);
-      }
-      return state;
-    }
-  } catch (e) {
-    console.error("[auth-store] Dati corrotti, ripristino defaults:", e);
-  }
-  return { currentUserId: null, users: [DEFAULT_ADMIN, GIANLUCA_ADMIN] };
-}
-
-function saveAuth(state: AuthState): void {
-  localStorage.setItem(AUTH_KEY, JSON.stringify(state));
-}
-
-export function login(username: string, password: string): UserProfile | null {
-  const state = loadAuth();
-  const user = state.users.find(u => u.username === username && u.password === password && u.enabled);
-  if (!user) return null;
-  state.currentUserId = user.id;
-  saveAuth(state);
-  return user;
-}
-
-export function logout(): void {
-  const state = loadAuth();
-  state.currentUserId = null;
-  saveAuth(state);
-}
-
-export function getCurrentUser(): UserProfile | null {
-  const state = loadAuth();
-  if (!state.currentUserId) return null;
-  return state.users.find(u => u.id === state.currentUserId) ?? null;
-}
-
-export function getUsers(): UserProfile[] {
-  return loadAuth().users;
-}
-
-export function addUser(data: { username: string; password: string; role: UserRole; displayName: string; rappresentante?: string }): UserProfile {
-  const state = loadAuth();
-  if (state.users.some(u => u.username === data.username)) {
-    throw new Error("Username già in uso");
-  }
-  const user: UserProfile = {
-    id: `user-${Date.now()}`,
-    ...data,
-    enabled: true,
+function rowToUserProfile(row: Record<string, unknown>): UserProfile {
+  return {
+    id: row.id as string,
+    username: row.username as string,
+    password: row.password_hash as string,
+    role: row.role as UserRole,
+    displayName: row.display_name as string,
+    rappresentante: row.rappresentante as string | undefined,
+    enabled: row.enabled as boolean,
   };
-  state.users.push(user);
-  saveAuth(state);
-  return user;
 }
 
-export function updateUser(id: string, updates: Partial<Omit<UserProfile, "id">>): void {
-  const state = loadAuth();
-  const idx = state.users.findIndex(u => u.id === id);
-  if (idx < 0) return;
+export async function login(username: string, password: string): Promise<UserProfile | null> {
+  // Task 37: cleanup legacy localStorage auth key on first successful login
+  localStorage.removeItem("como1907_auth");
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("username", username)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const hash = data.password_hash as string;
+  const valid = await bcrypt.compare(password, hash);
+  if (!valid) return null;
+
+  sessionStorage.setItem(SESSION_KEY, data.id as string);
+  return rowToUserProfile(data as Record<string, unknown>);
+}
+
+export async function logout(): Promise<void> {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+export async function getCurrentUser(): Promise<UserProfile | null> {
+  const userId = sessionStorage.getItem(SESSION_KEY);
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", userId)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (error || !data) {
+    sessionStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+
+  return rowToUserProfile(data as Record<string, unknown>);
+}
+
+export async function getUsers(): Promise<UserProfile[]> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[auth-store] getUsers error:", error);
+    return [];
+  }
+
+  return (data ?? []).map(row => rowToUserProfile(row as Record<string, unknown>));
+}
+
+export async function addUser(data: {
+  username: string;
+  password: string;
+  role: UserRole;
+  displayName: string;
+  rappresentante?: string;
+}): Promise<UserProfile> {
+  const passwordHash = await bcrypt.hash(data.password, 10);
+
+  const { data: inserted, error } = await supabase
+    .from("users")
+    .insert({
+      username: data.username,
+      password_hash: passwordHash,
+      role: data.role,
+      display_name: data.displayName,
+      rappresentante: data.rappresentante ?? null,
+      enabled: true,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[auth-store] addUser error:", error);
+    if (error.code === "23505") throw new Error("Username già in uso");
+    throw new Error("Errore durante la creazione dell'utente");
+  }
+
+  return rowToUserProfile(inserted as Record<string, unknown>);
+}
+
+export async function updateUser(id: string, updates: Partial<Omit<UserProfile, "id">>): Promise<void> {
   // Don't allow disabling the default admin
-  if (id === DEFAULT_ADMIN.id && updates.enabled === false) return;
-  state.users[idx] = { ...state.users[idx], ...updates };
-  saveAuth(state);
+  if (updates.enabled === false) {
+    const { data } = await supabase.from("users").select("username").eq("id", id).maybeSingle();
+    if (data?.username === "admin") return;
+  }
+
+  const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.displayName !== undefined) dbUpdates.display_name = updates.displayName;
+  if (updates.role !== undefined) dbUpdates.role = updates.role;
+  if (updates.rappresentante !== undefined) dbUpdates.rappresentante = updates.rappresentante;
+  if (updates.enabled !== undefined) dbUpdates.enabled = updates.enabled;
+  if (updates.password !== undefined) {
+    dbUpdates.password_hash = await bcrypt.hash(updates.password, 10);
+  }
+
+  const { error } = await supabase.from("users").update(dbUpdates).eq("id", id);
+  if (error) console.error("[auth-store] updateUser error:", error);
 }
 
-export function toggleUserEnabled(id: string): void {
-  const state = loadAuth();
-  const user = state.users.find(u => u.id === id);
-  if (!user || id === DEFAULT_ADMIN.id) return;
-  user.enabled = !user.enabled;
-  saveAuth(state);
+export async function toggleUserEnabled(id: string): Promise<void> {
+  const { data } = await supabase.from("users").select("username, enabled").eq("id", id).maybeSingle();
+  if (!data || data.username === "admin") return;
+
+  const { error } = await supabase
+    .from("users")
+    .update({ enabled: !data.enabled, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) console.error("[auth-store] toggleUserEnabled error:", error);
 }

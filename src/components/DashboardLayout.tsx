@@ -1,4 +1,4 @@
-import { ReactNode, useState, useRef, useCallback } from "react";
+import { ReactNode, useState, useRef, useCallback, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
 import { UserRole } from "@/types/auth";
-import { TPWithMetrics } from "@/types/dashboard";
+import { TPWithMetrics, MonthData } from "@/types/dashboard";
 import ExportReportModal from "@/components/ExportReportModal";
 
 interface UploadResult {
@@ -24,8 +24,8 @@ interface LayoutProps {
   selectedMonth: string;
   availableMonths: string[];
   onMonthChange: (m: string) => void;
-  onUpload: (csv: string) => UploadResult;
-  onConfirmUpload: (csv: string) => void;
+  onUpload: (csv: string) => Promise<UploadResult>;
+  onConfirmUpload: (csv: string) => Promise<void>;
   hasGiacenza: boolean;
   onReset: () => void;
   onLogout: () => void;
@@ -34,6 +34,7 @@ interface LayoutProps {
   isAdmin: boolean;
   records: TPWithMetrics[];
   hasGiacenzaProp: boolean;
+  allMonths: MonthData[];
 }
 
 const getNavItems = (isAdmin: boolean) => {
@@ -80,7 +81,7 @@ function readFileAsText(file: File): Promise<string> {
 export default function Layout({
   children, selectedMonth, availableMonths, onMonthChange,
   onUpload, onConfirmUpload, hasGiacenza, onReset, onLogout,
-  userName, userRole, isAdmin, records, hasGiacenzaProp
+  userName, userRole, isAdmin, records, hasGiacenzaProp, allMonths
 }: LayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -98,7 +99,7 @@ export default function Layout({
     setUploading(true);
     try {
       const text = await readFileAsText(file);
-      const result = onUpload(text);
+      const result = await onUpload(text);
       if (result.needsConfirm) {
         setPendingCsv(text);
         setConfirmDialog(true);
@@ -303,6 +304,7 @@ export default function Layout({
         records={records}
         selectedMonth={selectedMonth}
         hasGiacenza={hasGiacenzaProp}
+        allMonths={allMonths}
       />
     </div>
   );
