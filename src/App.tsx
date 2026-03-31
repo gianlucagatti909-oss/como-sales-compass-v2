@@ -70,7 +70,7 @@ function DashboardApp() {
   const {
     selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
     enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths, refresh,
-    loading: dashLoading, tpCountByRapp,
+    loading: dashLoading, tpCountByRapp, tpAnagrafica,
   } = useDashboard();
 
   // Show loading while auth or initial data is being fetched
@@ -150,7 +150,7 @@ function DashboardContent({
       allMonths={allMonths}
     >
       <Routes>
-        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} />} />
+        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} totalTPAnagrafica={tpAnagrafica.length} />} />
         <Route path="/touchpoints" element={<TPListPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} allMonths={allMonths} />} />
         <Route path="/rappresentanti" element={

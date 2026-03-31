@@ -14,6 +14,7 @@ interface Props {
   hasGiacenza: boolean;
   selectedMonth: string;
   allMonths: MonthData[];
+  totalTPAnagrafica: number;
 }
 
 // Clickable KPI Card
@@ -59,7 +60,7 @@ const chartTooltipStyle = {
   color: "hsl(var(--card-foreground))",
 };
 
-export default function HomePage({ records, hasGiacenza, selectedMonth, allMonths }: Props) {
+export default function HomePage({ records, hasGiacenza, selectedMonth, allMonths, totalTPAnagrafica }: Props) {
   const navigate = useNavigate();
 
   // Revenue trend (all months)
@@ -108,7 +109,7 @@ export default function HomePage({ records, hasGiacenza, selectedMonth, allMonth
     const strValid = hasGiacenza ? records.filter(r => r.str !== null) : [];
     const avgStr = strValid.length > 0 ? strValid.reduce((s, r) => s + r.str!, 0) / strValid.length : null;
     const activeTP = records.filter(r => r.venduto_euro > 0).length;
-    const dormientTP = hasGiacenza ? records.filter(r => r.categoria === "C").length : null;
+    const dormientTP = totalTPAnagrafica - activeTP;
     return { totalFatturato, totalPezzi, avgStr, activeTP, dormientTP };
   }, [records, hasGiacenza]);
 
@@ -185,7 +186,7 @@ export default function HomePage({ records, hasGiacenza, selectedMonth, allMonth
         <KPIDashCard
           title="Touchpoint attivi"
           value={activeTP}
-          subtitle={`su ${records.length} totali${dormientTP !== null ? ` · ${dormientTP} dormienti` : ""}`}
+          subtitle={`su ${totalTPAnagrafica} totali · ${dormientTP} dormienti`}
           icon={<Store className="w-4 h-4" />}
           onClick={() => navigate("/touchpoints")}
         />

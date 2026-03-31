@@ -137,3 +137,48 @@ export async function clearStore(): Promise<void> {
   const { error } = await supabase.from("tp_records").delete().neq("mese", "");
   if (error) console.error("[store] clearStore error:", error);
 }
+
+// ── TP Anagrafica helpers ─────────────────────────────────────────────────────
+
+export interface TPAnagrafica {
+  tp_id: string;
+  tp_nome: string;
+  rappresentante: string;
+}
+
+export async function loadTPAnagrafica(): Promise<TPAnagrafica[]> {
+  // Get unique TP from the most recent month's records
+  const { data, error } = await supabase
+    .from("tp_records")
+    .select("tp_id, tp_nome, rappresentante, mese")
+    .order("mese", { ascending: false });
+
+  if (error) {
+    console.error("[store] loadTPAnagrafica error:", error);
+    return [];
+  }
+
+  // Deduplicate by tp_id (keep most recent)
+  const seen = new Map<string, TPAnagrafica>();
+  for (const row of data ?? []) {
+    const id = row.tp_id as string;
+    if (!seen.has(id)) {
+      seen.set(id, {
+        tp_id: id,
+        tp_nome: row.tp_nome as string,
+        rappresentante: row.rappresentante as string,
+      });
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+export async function getTotalTPCountByRappresentante(anagrafica: TPAnagrafica[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const tp of anagrafica) {
+    const rapp = tp.rappresentante || "N/A";
+    counts.set(rapp, (counts.get(rapp) || 0) + 1);
+  }
+  return counts;
+}
