@@ -154,7 +154,7 @@ function DashboardContent({
       allMonths={allMonths}
     >
       <Routes>
-        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} totalTPAnagrafica={tpAnagrafica.length} />} />
+        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} totalTPAnagrafica={user.role === "admin" ? tpAnagrafica.length : tpAnagrafica.filter(tp => tp.rappresentante === user.rappresentante).length} />} />
         <Route path="/touchpoints" element={<TPListPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} allMonths={allMonths} />} />
         <Route path="/rappresentanti" element={
