@@ -149,7 +149,11 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
       const tpAttivi = tps.filter(t => t.venduto_euro > 0).length;
       const strs = filteredHasGiacenza ? tps.filter(t => t.str !== null).map(t => t.str!) : [];
       const avgStr = strs.length > 0 ? strs.reduce((a, b) => a + b, 0) / strs.length : null;
-      const tpDormienti = tps.filter(t => t.venduto_euro === 0).length;
+      
+      // TP dormienti: categoria C (STR < 40% o zero vendite)
+      const tpDormienti = filteredHasGiacenza ? tps.filter(t => t.categoria === "C").length : 0;
+      
+      // TP migliorati e peggiorati: solo se trend è calcolato (single month)
       const tpMigliorati = filteredHasGiacenza ? tps.filter(t => t.trend === "up").length : 0;
       const tpPeggiorati = filteredHasGiacenza ? tps.filter(t => t.trend === "down").length : 0;
 
@@ -235,8 +239,12 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
               )}
               <div className="text-muted-foreground">TP attivi</div>
               <div className="text-right">{s.tpAttivi} / {s.tpTotali}</div>
-              <div className="text-muted-foreground">TP dormienti</div>
-              <div className="text-right category-c font-medium">{s.tpDormienti}</div>
+              {filteredHasGiacenza && (
+                <>
+                  <div className="text-muted-foreground">TP dormienti</div>
+                  <div className="text-right category-c font-medium">{s.tpDormienti}</div>
+                </>
+              )}
               {filteredHasGiacenza && s.tpMigliorati > 0 && (
                 <>
                   <div className="text-muted-foreground">TP migliorati</div>
