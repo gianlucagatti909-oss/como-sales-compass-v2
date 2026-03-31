@@ -6,7 +6,10 @@
       "Bash(npm install:*)",
       "Bash(node:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(sips -z 180 180 como-logo.png --out favicon-180.png)",
+      "Bash(sips -z 32 32 como-logo.png --out favicon-32.png)",
+      "Bash(sips -z 16 16 como-logo.png --out favicon-16.png)"
     ]
   }
 }
