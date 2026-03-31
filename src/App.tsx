@@ -103,6 +103,7 @@ function DashboardApp() {
     allMonths={allMonths}
     refresh={refresh}
     logout={logout}
+    tpAnagrafica={tpAnagrafica}
   />;
 }
 
@@ -110,7 +111,7 @@ function DashboardApp() {
 function DashboardContent({
   user, isAdmin, filteredRecords, selectedMonth, setSelectedMonth,
   uploadCSV, confirmUpload, hasGiacenza, availableMonths, resetData,
-  allMonths, refresh, logout,
+  allMonths, refresh, logout, tpAnagrafica,
 }: {
   user: NonNullable<ReturnType<typeof useAuth>["user"]>;
   isAdmin: boolean;
@@ -125,6 +126,7 @@ function DashboardContent({
   allMonths: ReturnType<typeof useDashboard>["allMonths"];
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
+  tpAnagrafica: ReturnType<typeof useDashboard>["tpAnagrafica"];
 }) {
   const availableRappresentanti = useMemo(() => {
     const set = new Set<string>();
