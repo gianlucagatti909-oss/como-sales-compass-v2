@@ -9,3 +9,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_global
 UPDATE users
 SET password_hash = '$2b$10$z4wcguT0fsF.kkkXaP76mecLhtgNzy9iM.MehawJUelliHvJLPgR.'
 WHERE username IN ('admin', 'gianlucagatti909@gmail.com');
+
+-- Migration 003: Add geolocation columns to tp_anagrafica for map view
+ALTER TABLE public.tp_anagrafica
+  ADD COLUMN IF NOT EXISTS lat NUMERIC,
+  ADD COLUMN IF NOT EXISTS lng NUMERIC;

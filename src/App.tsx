@@ -15,6 +15,7 @@ import RappresentantiPage from "@/pages/RappresentantiPage";
 import PrioritaPage from "@/pages/PrioritaPage";
 import TopPerformerPage from "@/pages/TopPerformerPage";
 import SettingsPage from "@/pages/SettingsPage";
+import MappaPage from "@/pages/MappaPage";
 import NotFound from "@/pages/NotFound";
 import { useMemo, useEffect } from "react";
 
@@ -174,6 +175,7 @@ function DashboardContent({
             onConfirmUpload={confirmUpload}
           />
         } />
+        <Route path="/mappa" element={<MappaPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>

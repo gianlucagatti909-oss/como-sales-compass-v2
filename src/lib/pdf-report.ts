@@ -1,8 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { TPWithMetrics, MonthData } from "@/types/dashboard";
-import { enrichRecords, formatCurrency, formatPercent, formatMonth, calcSTR, calcCategory, calcTrend } from "./calculations";
-import { MonthData } from "@/types/dashboard";
+import { enrichRecords, formatCurrency, formatPercent, formatMonth, calcSTR, calcCategory, calcTrend } from "./calculations";import { MonthData } from "@/types/dashboard";
 
 // Colors
 const COLOR_A: [number, number, number] = [34, 197, 94];   // #22c55e

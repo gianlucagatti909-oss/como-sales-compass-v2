@@ -1,6 +1,6 @@
 import { ReactNode, useState, useRef, useCallback, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown, CheckCircle2, Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -48,6 +48,7 @@ const getNavItems = (isAdmin: boolean) => {
   items.push(
     { path: "/priorita", label: "Priorità", icon: AlertTriangle },
     { path: "/top-performer", label: "Top Performer", icon: Trophy },
+    { path: "/mappa", label: "Mappa TP", icon: Map },
     { path: "/impostazioni", label: "Impostazioni", icon: Settings },
   );
   return items;
