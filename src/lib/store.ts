@@ -149,49 +149,34 @@ export interface TPAnagrafica {
 }
 
 export async function loadTPAnagrafica(): Promise<TPAnagrafica[]> {
-  const { data: anagraficaData, error: anagraficaError } = await supabase
+  const { data, error } = await supabase
     .from("tp_anagrafica")
-    .select("tp_id");
+    .select("tp_id, rappresentante");
 
-  if (anagraficaError) {
-    console.error("[store] loadTPAnagrafica error:", anagraficaError);
+  if (error) {
+    console.error("[store] loadTPAnagrafica error:", error);
     return [];
   }
 
-  const anagraficaIds = new Set((anagraficaData ?? []).map(r => r.tp_id as string));
-
-  const { data: recordsData, error: recordsError } = await supabase
+  // Get tp_nome from tp_records (most recent)
+  const { data: recordsData } = await supabase
     .from("tp_records")
-    .select("tp_id, tp_nome, rappresentante")
+    .select("tp_id, tp_nome")
     .order("mese", { ascending: false });
 
-  if (recordsError) {
-    console.error("[store] loadTPAnagrafica records error:", recordsError);
-    return [];
-  }
-
-  const tpDetails = new Map<string, { tp_nome: string; rappresentante: string }>();
+  const nameMap = new Map<string, string>();
   for (const row of recordsData ?? []) {
     const id = row.tp_id as string;
-    if (!tpDetails.has(id)) {
-      tpDetails.set(id, {
-        tp_nome: row.tp_nome as string,
-        rappresentante: row.rappresentante as string,
-      });
+    if (!nameMap.has(id)) {
+      nameMap.set(id, row.tp_nome as string);
     }
   }
 
-  const result: TPAnagrafica[] = [];
-  for (const tpId of anagraficaIds) {
-    const details = tpDetails.get(tpId);
-    result.push({
-      tp_id: tpId,
-      tp_nome: details?.tp_nome ?? tpId,
-      rappresentante: details?.rappresentante ?? "",
-    });
-  }
-
-  return result;
+  return (data ?? []).map(row => ({
+    tp_id: row.tp_id as string,
+    tp_nome: nameMap.get(row.tp_id as string) ?? row.tp_id as string,
+    rappresentante: (row.rappresentante as string) ?? "",
+  }));
 }
 
 export async function getTotalTPCountByRappresentante(anagrafica: TPAnagrafica[]): Promise<Map<string, number>> {
