@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { DashboardStore, MonthData, TPWithMetrics } from "@/types/dashboard";
-import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, monthExists, clearStore, deleteMonth } from "@/lib/store";
+import { loadStore, addMonth, getMonthData, getPreviousMonth, getAllMonthsData, monthExists, clearStore, deleteMonth, loadTPAnagrafica, getTotalTPCountByRappresentante, TPAnagrafica } from "@/lib/store";
 import { enrichRecords } from "@/lib/calculations";
 import { parseCSV } from "@/lib/csv-parser";
 import { addImportMeta, removeImportMeta, clearSettings } from "@/lib/settings-store";
@@ -13,13 +13,22 @@ export function useDashboard() {
   const [store, setStore] = useState<DashboardStore>({ months: [] });
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [tpAnagrafica, setTPAnagrafica] = useState<TPAnagrafica[]>([]);
+  const [tpCountByRapp, setTPCountByRapp] = useState<Map<string, number>>(new Map());
 
   // Initialize from Supabase on mount
   useEffect(() => {
     let cancelled = false;
-    loadStore().then(s => {
+    Promise.all([
+      loadStore(),
+      loadTPAnagrafica()
+    ]).then(([s, anagrafica]) => {
       if (cancelled) return;
       setStore(s);
+      setTPAnagrafica(anagrafica);
+      getTotalTPCountByRappresentante(anagrafica).then(map => {
+        if (!cancelled) setTPCountByRapp(map);
+      });
       const months = s.months.map(m => m.mese);
       if (months.length > 0) setSelectedMonth(months[months.length - 1]);
       setLoading(false);
@@ -32,7 +41,11 @@ export function useDashboard() {
 
   const refresh = useCallback(async () => {
     const s = await loadStore();
+    const anagrafica = await loadTPAnagrafica();
     setStore(s);
+    setTPAnagrafica(anagrafica);
+    const map = await getTotalTPCountByRappresentante(anagrafica);
+    setTPCountByRapp(map);
     const months = s.months.map(m => m.mese);
     setSelectedMonth(prev => {
       if (months.length > 0 && !months.includes(prev)) return months[months.length - 1];
@@ -126,6 +139,8 @@ export function useDashboard() {
   const resetData = useCallback(async () => {
     await Promise.all([clearStore(), clearSettings()]);
     setStore({ months: [] });
+    setTPAnagrafica([]);
+    setTPCountByRapp(new Map());
     setSelectedMonth("");
   }, []);
 
@@ -145,5 +160,7 @@ export function useDashboard() {
     refresh,
     resetData,
     removeMonth,
+    tpAnagrafica,
+    tpCountByRapp,
   };
 }

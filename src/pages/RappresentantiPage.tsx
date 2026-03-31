@@ -12,6 +12,7 @@ interface Props {
   allMonths: MonthData[];
   availableMonths: string[];
   selectedMonth: string;
+  tpCountByRapp: Map<string, number>;
 }
 
 interface RappStats {
@@ -20,6 +21,7 @@ interface RappStats {
   avgStr: number | null;
   tpAttivi: number;
   tpTotali: number;
+  tpTotaliAnagrafica: number;
   tpDormienti: number;
   tpMigliorati: number;
   tpPeggiorati: number;
@@ -124,7 +126,7 @@ function aggregateRecords(months: MonthData[]): { records: TPWithMetrics[]; hasG
   return { records, hasGiacenza };
 }
 
-export default function RappresentantiPage({ records, hasGiacenza, allMonths, availableMonths, selectedMonth }: Props) {
+export default function RappresentantiPage({ records, hasGiacenza, allMonths, availableMonths, selectedMonth, tpCountByRapp }: Props) {
   const [period, setPeriod] = useState<PeriodOption>("current");
 
   const { filteredRecords, filteredHasGiacenza } = useMemo(() => {
@@ -153,17 +155,20 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
       // TP dormienti: categoria C (STR < 40% o zero vendite)
       const tpDormienti = filteredHasGiacenza ? tps.filter(t => t.categoria === "C").length : 0;
       
-      // TP migliorati e peggiorati: solo se trend è calcolato (single month)
+      // TP migliorati e peggiorati: solo se trend è calcolato
       const tpMigliorati = filteredHasGiacenza ? tps.filter(t => t.trend === "up").length : 0;
       const tpPeggiorati = filteredHasGiacenza ? tps.filter(t => t.trend === "down").length : 0;
 
+      // Total TP in anagrafica per questo rappresentante
+      const tpTotaliAnagrafica = tpCountByRapp.get(nome) ?? tps.length;
+
       return {
         nome, fatturato, avgStr, tpAttivi, tpTotali: tps.length,
-        tpDormienti, tpMigliorati, tpPeggiorati,
+        tpTotaliAnagrafica, tpDormienti, tpMigliorati, tpPeggiorati,
         fatturatoMedioPerTP: tps.length > 0 ? fatturato / tps.length : 0,
       };
     }).sort((a, b) => b.fatturato - a.fatturato);
-  }, [filteredRecords, filteredHasGiacenza]);
+  }, [filteredRecords, filteredHasGiacenza, tpCountByRapp]);
 
   if (records.length === 0) return <EmptyState />;
 
@@ -238,7 +243,7 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
                 </>
               )}
               <div className="text-muted-foreground">TP attivi</div>
-              <div className="text-right">{s.tpAttivi} / {s.tpTotali}</div>
+              <div className="text-right">{s.tpAttivi} / {s.tpTotaliAnagrafica}</div>
               {filteredHasGiacenza && (
                 <>
                   <div className="text-muted-foreground">TP dormienti</div>

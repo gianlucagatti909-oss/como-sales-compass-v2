@@ -70,7 +70,7 @@ function DashboardApp() {
   const {
     selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
     enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths, refresh,
-    loading: dashLoading,
+    loading: dashLoading, tpCountByRapp,
   } = useDashboard();
 
   // Show loading while auth or initial data is being fetched
@@ -155,7 +155,7 @@ function DashboardContent({
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} allMonths={allMonths} />} />
         <Route path="/rappresentanti" element={
           isAdmin
-            ? <RappresentantiPage records={filteredRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} />
+            ? <RappresentantiPage records={filteredRecords} hasGiacenza={hasGiacenza} allMonths={allMonths} availableMonths={availableMonths} selectedMonth={selectedMonth} tpCountByRapp={tpCountByRapp} />
             : <div className="glass-card p-8 text-center text-muted-foreground">Accesso riservato al Sales Manager.</div>
         } />
         <Route path="/priorita" element={<PrioritaPage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} />} />
