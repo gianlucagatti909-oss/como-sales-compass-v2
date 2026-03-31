@@ -138,6 +138,8 @@ export async function clearStore(): Promise<void> {
   if (error) console.error("[store] clearStore error:", error);
 }
 
+
+
 // ── TP Anagrafica helpers ─────────────────────────────────────────────────────
 
 export interface TPAnagrafica {
@@ -147,31 +149,49 @@ export interface TPAnagrafica {
 }
 
 export async function loadTPAnagrafica(): Promise<TPAnagrafica[]> {
-  // Get unique TP from the most recent month's records
-  const { data, error } = await supabase
-    .from("tp_records")
-    .select("tp_id, tp_nome, rappresentante, mese")
-    .order("mese", { ascending: false });
+  const { data: anagraficaData, error: anagraficaError } = await supabase
+    .from("tp_anagrafica")
+    .select("tp_id");
 
-  if (error) {
-    console.error("[store] loadTPAnagrafica error:", error);
+  if (anagraficaError) {
+    console.error("[store] loadTPAnagrafica error:", anagraficaError);
     return [];
   }
 
-  // Deduplicate by tp_id (keep most recent)
-  const seen = new Map<string, TPAnagrafica>();
-  for (const row of data ?? []) {
+  const anagraficaIds = new Set((anagraficaData ?? []).map(r => r.tp_id as string));
+
+  const { data: recordsData, error: recordsError } = await supabase
+    .from("tp_records")
+    .select("tp_id, tp_nome, rappresentante")
+    .order("mese", { ascending: false });
+
+  if (recordsError) {
+    console.error("[store] loadTPAnagrafica records error:", recordsError);
+    return [];
+  }
+
+  const tpDetails = new Map<string, { tp_nome: string; rappresentante: string }>();
+  for (const row of recordsData ?? []) {
     const id = row.tp_id as string;
-    if (!seen.has(id)) {
-      seen.set(id, {
-        tp_id: id,
+    if (!tpDetails.has(id)) {
+      tpDetails.set(id, {
         tp_nome: row.tp_nome as string,
         rappresentante: row.rappresentante as string,
       });
     }
   }
 
-  return Array.from(seen.values());
+  const result: TPAnagrafica[] = [];
+  for (const tpId of anagraficaIds) {
+    const details = tpDetails.get(tpId);
+    result.push({
+      tp_id: tpId,
+      tp_nome: details?.tp_nome ?? tpId,
+      rappresentante: details?.rappresentante ?? "",
+    });
+  }
+
+  return result;
 }
 
 export async function getTotalTPCountByRappresentante(anagrafica: TPAnagrafica[]): Promise<Map<string, number>> {
