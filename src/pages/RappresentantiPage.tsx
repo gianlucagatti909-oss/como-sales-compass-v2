@@ -153,7 +153,7 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
       const avgStr = strs.length > 0 ? strs.reduce((a, b) => a + b, 0) / strs.length : null;
       
       // TP dormienti: categoria C (STR < 40% o zero vendite)
-      const tpDormienti = filteredHasGiacenza ? tps.filter(t => t.categoria === "C").length : 0;
+      const tpDormienti = (tpCountByRapp.get(nome) ?? tps.length) - tpAttivi;
       
       // TP migliorati e peggiorati: solo se trend è calcolato
       const tpMigliorati = filteredHasGiacenza ? tps.filter(t => t.trend === "up").length : 0;
