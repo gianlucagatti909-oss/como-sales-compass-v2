@@ -104,6 +104,7 @@ function DashboardApp() {
     refresh={refresh}
     logout={logout}
     tpAnagrafica={tpAnagrafica}
+    tpCountByRapp={tpCountByRapp}
   />;
 }
 
@@ -111,7 +112,7 @@ function DashboardApp() {
 function DashboardContent({
   user, isAdmin, filteredRecords, selectedMonth, setSelectedMonth,
   uploadCSV, confirmUpload, hasGiacenza, availableMonths, resetData,
-  allMonths, refresh, logout, tpAnagrafica,
+  allMonths, refresh, logout, tpAnagrafica, tpCountByRapp,
 }: {
   user: NonNullable<ReturnType<typeof useAuth>["user"]>;
   isAdmin: boolean;
@@ -127,6 +128,7 @@ function DashboardContent({
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   tpAnagrafica: ReturnType<typeof useDashboard>["tpAnagrafica"];
+  tpCountByRapp: ReturnType<typeof useDashboard>["tpCountByRapp"];
 }) {
   const availableRappresentanti = useMemo(() => {
     const set = new Set<string>();
