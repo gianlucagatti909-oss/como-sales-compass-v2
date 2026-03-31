@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { TPWithMetrics, MonthData } from "@/types/dashboard";
-import { formatCurrency, formatPercent, calcSTR, enrichRecords, calcCategory, calcTrend } from "@/lib/calculations";
+import { formatCurrency, formatPercent, calcSTR, enrichRecords } from "@/lib/calculations";
 import EmptyState from "@/components/EmptyState";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -61,7 +61,6 @@ function aggregateRecords(months: MonthData[]): { records: TPWithMetrics[]; hasG
   const sorted = [...months].sort((a, b) => a.mese.localeCompare(b.mese));
   const hasGiacenza = sorted.some(m => m.hasGiacenza);
 
-  // Build map: tp_id -> {current category, previous category, ...rest}
   const tpMap = new Map<string, {
     venduto_euro: number;
     venduto_pezzi: number;
@@ -73,24 +72,11 @@ function aggregateRecords(months: MonthData[]): { records: TPWithMetrics[]; hasG
     rappresentante: string;
     mese: string;
     tp_id: string;
-    currentCat: any;
-    previousCat: any;
   }>();
 
-  for (let i = 0; i < sorted.length; i++) {
-    const month = sorted[i];
-    const prevMonth = i > 0 ? sorted[i - 1] : undefined;
-    const prevMap = new Map();
-    prevMonth?.records.forEach(r => prevMap.set(r.tp_id, r));
-
+  for (const month of sorted) {
     for (const r of month.records) {
       const existing = tpMap.get(r.tp_id);
-      const str = calcSTR(r.venduto_pezzi, r.giacenza_pezzi);
-      const currentCat = calcCategory(str, r.venduto_pezzi);
-      const prevRecord = prevMap.get(r.tp_id);
-      const prevStr = prevRecord ? calcSTR(prevRecord.venduto_pezzi, prevRecord.giacenza_pezzi) : null;
-      const previousCat = prevRecord ? calcCategory(prevStr, prevRecord.venduto_pezzi) : null;
-
       if (existing) {
         existing.venduto_euro += r.venduto_euro;
         existing.venduto_pezzi += r.venduto_pezzi;
@@ -98,27 +84,25 @@ function aggregateRecords(months: MonthData[]): { records: TPWithMetrics[]; hasG
           existing.giacenza_pezzi = (existing.giacenza_pezzi ?? 0) + r.giacenza_pezzi;
           existing.giacenza_count += 1;
         }
-        existing.currentCat = currentCat;
-        existing.previousCat = previousCat;
       } else {
         tpMap.set(r.tp_id, {
           ...r,
           giacenza_count: r.giacenza_pezzi !== null ? 1 : 0,
-          currentCat,
-          previousCat,
         });
       }
     }
   }
 
-  // Build enriched records with trend
   const records: TPWithMetrics[] = Array.from(tpMap.values()).map(r => {
     const avgGiacenza = r.giacenza_pezzi !== null && r.giacenza_count > 0
       ? r.giacenza_pezzi / r.giacenza_count
       : null;
     const str = calcSTR(r.venduto_pezzi, avgGiacenza);
-    const categoria = calcCategory(str, r.venduto_pezzi);
-    const trend = calcTrend(r.currentCat, r.previousCat);
+    const categoria = str === null ? null
+      : r.venduto_pezzi === 0 ? "C" as const
+      : str > 60 ? "A" as const
+      : str >= 40 ? "B" as const
+      : "C" as const;
 
     return {
       tp_id: r.tp_id,
@@ -132,7 +116,7 @@ function aggregateRecords(months: MonthData[]): { records: TPWithMetrics[]; hasG
       mese: r.mese,
       str,
       categoria,
-      trend,
+      trend: "nd" as const,
       trend_fatturato: null,
     };
   });
@@ -163,11 +147,11 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
     return Array.from(map.entries()).map(([nome, tps]): RappStats => {
       const fatturato = tps.reduce((s, t) => s + t.venduto_euro, 0);
       const tpAttivi = tps.filter(t => t.venduto_euro > 0).length;
-      const strs = hasGiacenza ? tps.filter(t => t.str !== null).map(t => t.str!) : [];
+      const strs = filteredHasGiacenza ? tps.filter(t => t.str !== null).map(t => t.str!) : [];
       const avgStr = strs.length > 0 ? strs.reduce((a, b) => a + b, 0) / strs.length : null;
       const tpDormienti = tps.filter(t => t.venduto_euro === 0).length;
-      const tpMigliorati = tps.filter(t => t.trend === "up").length;
-      const tpPeggiorati = tps.filter(t => t.trend === "down").length;
+      const tpMigliorati = filteredHasGiacenza ? tps.filter(t => t.trend === "up").length : 0;
+      const tpPeggiorati = filteredHasGiacenza ? tps.filter(t => t.trend === "down").length : 0;
 
       return {
         nome, fatturato, avgStr, tpAttivi, tpTotali: tps.length,
@@ -253,10 +237,18 @@ export default function RappresentantiPage({ records, hasGiacenza, allMonths, av
               <div className="text-right">{s.tpAttivi} / {s.tpTotali}</div>
               <div className="text-muted-foreground">TP dormienti</div>
               <div className="text-right category-c font-medium">{s.tpDormienti}</div>
-              <div className="text-muted-foreground">TP migliorati</div>
-              <div className="text-right trend-up font-medium">{s.tpMigliorati}</div>
-              <div className="text-muted-foreground">TP peggiorati</div>
-              <div className="text-right trend-down font-medium">{s.tpPeggiorati}</div>
+              {filteredHasGiacenza && s.tpMigliorati > 0 && (
+                <>
+                  <div className="text-muted-foreground">TP migliorati</div>
+                  <div className="text-right trend-up font-medium">{s.tpMigliorati}</div>
+                </>
+              )}
+              {filteredHasGiacenza && s.tpPeggiorati > 0 && (
+                <>
+                  <div className="text-muted-foreground">TP peggiorati</div>
+                  <div className="text-right trend-down font-medium">{s.tpPeggiorati}</div>
+                </>
+              )}
               <div className="text-muted-foreground">Fatt. medio/TP</div>
               <div className="font-mono text-right">{formatCurrency(s.fatturatoMedioPerTP)}</div>
             </div>
