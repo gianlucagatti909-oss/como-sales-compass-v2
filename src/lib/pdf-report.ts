@@ -67,18 +67,17 @@ function addHeader(doc: jsPDF, title: string, meseLabel: string) {
   doc.line(14, 32, w - 14, 32);
 }
 
-function addKPIScorecard(doc: jsPDF, y: number, records: TPWithMetrics[], hasGiacenza: boolean): number {
+function addKPIScorecard(doc: jsPDF, y: number, records: TPWithMetrics[], tpAnagraficaCount: number): number {
   const w = doc.internal.pageSize.getWidth();
   const cardW = (w - 28 - 12) / 4;
   const fatturato = records.reduce((s, r) => s + r.venduto_euro, 0);
-  const strs = records.filter(r => r.str !== null).map(r => r.str!);
-  const avgStr = strs.length ? strs.reduce((a, b) => a + b, 0) / strs.length : null;
   const active = records.filter(r => r.venduto_euro > 0).length;
-  const dormant = records.filter(r => r.categoria === "C").length;
+  const dormant = tpAnagraficaCount - active;
+  const avgFatPerTP = active > 0 ? fatturato / active : 0;
 
   const cards = [
     { label: "Fatturato Totale", value: formatCurrency(fatturato), color: COLOR_PRIMARY },
-    { label: "STR Medio", value: hasGiacenza ? formatPercent(avgStr) : "N/D", color: COLOR_A },
+    { label: "Fatt. Medio/TP", value: formatCurrency(avgFatPerTP), color: COLOR_A },
     { label: "TP Attivi", value: `${active}`, color: COLOR_PRIMARY },
     { label: "TP Dormienti", value: `${dormant}`, color: COLOR_C },
   ];
@@ -96,6 +95,83 @@ function addKPIScorecard(doc: jsPDF, y: number, records: TPWithMetrics[], hasGia
   });
 
   return y + 28;
+}
+
+function drawPieSlice(
+  doc: jsPDF,
+  cx: number, cy: number, r: number,
+  startAngle: number, endAngle: number,
+  color: [number, number, number]
+) {
+  const span = endAngle - startAngle;
+  if (Math.abs(span) < 0.001) return;
+  doc.setFillColor(...color);
+  const k = (doc as any).internal.scaleFactor;
+  const pageH = doc.internal.pageSize.getHeight();
+  const toX = (x: number) => x * k;
+  const toY = (y: number) => (pageH - y) * k;
+  const steps = Math.max(24, Math.ceil(Math.abs(span) * 12));
+  const parts: string[] = [];
+  parts.push(`${toX(cx).toFixed(3)} ${toY(cy).toFixed(3)} m`);
+  for (let i = 0; i <= steps; i++) {
+    const a = startAngle + span * (i / steps);
+    parts.push(`${toX(cx + r * Math.cos(a)).toFixed(3)} ${toY(cy + r * Math.sin(a)).toFixed(3)} l`);
+  }
+  parts.push('h f');
+  (doc as any).internal.write(parts.join(' '));
+}
+
+function addActiveInactivePie(
+  doc: jsPDF, y: number,
+  activeCount: number, inactiveCount: number,
+  title: string
+): number {
+  const total = activeCount + inactiveCount;
+  if (total === 0) return y;
+
+  doc.setFontSize(11);
+  doc.setTextColor(...COLOR_DARK);
+  doc.text(title, 14, y);
+  y += 6;
+
+  const cx = 55;
+  const cy = y + 30;
+  const r = 28;
+  const start = -Math.PI / 2;
+  const mid = start + (activeCount / total) * 2 * Math.PI;
+  const end = start + 2 * Math.PI;
+
+  drawPieSlice(doc, cx, cy, r, start, mid, COLOR_A);
+  if (inactiveCount > 0) drawPieSlice(doc, cx, cy, r, mid, end, COLOR_C);
+
+  // Thin white separator line
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.line(cx, cy, cx + r * Math.cos(start), cy + r * Math.sin(start));
+  if (inactiveCount > 0) doc.line(cx, cy, cx + r * Math.cos(mid), cy + r * Math.sin(mid));
+  doc.setLineWidth(0.2);
+
+  // Legend
+  const lx = cx + r + 12;
+  const activePct = ((activeCount / total) * 100).toFixed(1);
+  const inactivePct = ((inactiveCount / total) * 100).toFixed(1);
+
+  doc.setFillColor(...COLOR_A);
+  doc.roundedRect(lx, cy - 18, 5, 5, 1, 1, "F");
+  doc.setFontSize(9);
+  doc.setTextColor(...COLOR_DARK);
+  doc.text(`Attivi: ${activeCount} (${activePct}%)`, lx + 7, cy - 14);
+
+  doc.setFillColor(...COLOR_C);
+  doc.roundedRect(lx, cy - 8, 5, 5, 1, 1, "F");
+  doc.text(`Inattivi: ${inactiveCount} (${inactivePct}%)`, lx + 7, cy - 4);
+
+  doc.setFillColor(...COLOR_GRAY);
+  doc.roundedRect(lx, cy + 2, 5, 5, 1, 1, "F");
+  doc.setTextColor(...COLOR_GRAY);
+  doc.text(`Totale anagrafica: ${total}`, lx + 7, cy + 6);
+
+  return cy + r + 8;
 }
 
 function addBarChart(doc: jsPDF, y: number, data: { nome: string; fatturato: number; categoria: string | null }[], title: string): number {
@@ -220,7 +296,10 @@ export function generateReport(
   addHeader(doc, title, meseLabel);
 
   // 2. KPI Scorecard
-  let y = addKPIScorecard(doc, 38, filtered, hasGiacenza);
+  const anaFiltered = filterRep
+    ? tpAnagrafica.filter(tp => tp.rappresentante === filterRep)
+    : tpAnagrafica;
+  let y = addKPIScorecard(doc, 38, filtered, anaFiltered.length);
 
   // 3. Top 20 bar chart
   const top20 = [...filtered].sort((a, b) => b.venduto_euro - a.venduto_euro).slice(0, 20);
@@ -332,24 +411,28 @@ export function generateReport(
 
   // 7. TP Inattivi (in anagrafica but no sales in period)
   const activeIds = new Set(filtered.filter(r => r.venduto_euro > 0).map(r => r.tp_id));
-  const anaFiltered = filterRep
-    ? tpAnagrafica.filter(tp => tp.rappresentante === filterRep)
-    : tpAnagrafica;
   const inactiveTP = anaFiltered.filter(tp => !activeIds.has(tp.tp_id));
 
+  if (inactiveTP.length > 0 || anaFiltered.length > 0) {
+    if (afterTable > 150) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
+
+    const activeCount = anaFiltered.length - inactiveTP.length;
+    afterTable = addActiveInactivePie(doc, afterTable, activeCount, inactiveTP.length, "TP Attivi vs Inattivi nel periodo");
+  }
+
   if (inactiveTP.length > 0) {
-    if (afterTable > 180) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
+    if (afterTable > 200) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
 
     doc.setFontSize(11);
     doc.setTextColor(...COLOR_DARK);
     doc.text(`TP Inattivi nel periodo — ${inactiveTP.length} su ${anaFiltered.length}`, 14, afterTable);
 
     const inactiveHeaders = filterRep
-      ? [["Nome TP"]]
-      : [["Nome TP", "Rappresentante"]];
+      ? [["Codice TP", "Nome TP"]]
+      : [["Codice TP", "Nome TP", "Rappresentante"]];
     const inactiveBody = inactiveTP.map(tp => filterRep
-      ? [tp.tp_nome]
-      : [tp.tp_nome, tp.rappresentante || "N/D"]
+      ? [tp.tp_id, tp.tp_nome]
+      : [tp.tp_id, tp.tp_nome, tp.rappresentante || "N/D"]
     );
 
     autoTable(doc, {
