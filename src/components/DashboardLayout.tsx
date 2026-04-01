@@ -1,14 +1,16 @@
-import { ReactNode, useState, useRef, useCallback, useEffect } from "react";
+import { ReactNode, useState, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown, CheckCircle2, Map } from "lucide-react";
+import { LayoutDashboard, Store, Users, AlertTriangle, Trophy, Upload, Menu, X, Trash2, Settings, LogOut, FileDown, CheckCircle2, Map, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { formatMonth } from "@/lib/calculations";
 import { toast } from "sonner";
 import { UserRole } from "@/types/auth";
 import { TPWithMetrics, MonthData } from "@/types/dashboard";
+import { TPAnagrafica } from "@/lib/store";
 import ExportReportModal from "@/components/ExportReportModal";
 
 interface UploadResult {
@@ -22,8 +24,9 @@ interface UploadResult {
 interface LayoutProps {
   children: ReactNode;
   selectedMonth: string;
+  selectedMonths: string[];
   availableMonths: string[];
-  onMonthChange: (m: string) => void;
+  onMonthsChange: (months: string[]) => void;
   onUpload: (csv: string) => Promise<UploadResult>;
   onConfirmUpload: (csv: string) => Promise<void>;
   hasGiacenza: boolean;
@@ -35,6 +38,7 @@ interface LayoutProps {
   records: TPWithMetrics[];
   hasGiacenzaProp: boolean;
   allMonths: MonthData[];
+  tpAnagrafica: TPAnagrafica[];
 }
 
 const getNavItems = (isAdmin: boolean) => {
@@ -79,10 +83,75 @@ function readFileAsText(file: File): Promise<string> {
   });
 }
 
+function MonthMultiSelect({
+  availableMonths,
+  selectedMonths,
+  onMonthsChange,
+}: {
+  availableMonths: string[];
+  selectedMonths: string[];
+  onMonthsChange: (months: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const toggle = (mese: string) => {
+    if (selectedMonths.includes(mese)) {
+      const next = selectedMonths.filter(m => m !== mese);
+      if (next.length > 0) onMonthsChange(next);
+    } else {
+      onMonthsChange([...selectedMonths, mese]);
+    }
+  };
+
+  const label = (() => {
+    if (selectedMonths.length === 0) return "Seleziona mese";
+    if (selectedMonths.length === 1) return formatMonth(selectedMonths[0]);
+    const sorted = [...selectedMonths].sort();
+    return `${formatMonth(sorted[0])} — ${formatMonth(sorted[sorted.length - 1])} (${selectedMonths.length})`;
+  })();
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-52 justify-between text-sm font-normal">
+          <span className="truncate">{label}</span>
+          <ChevronDown className="w-4 h-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-52 p-2" align="start">
+        <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
+          {availableMonths.map(mese => (
+            <label key={mese} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer text-sm">
+              <Checkbox
+                checked={selectedMonths.includes(mese)}
+                onCheckedChange={() => toggle(mese)}
+              />
+              {formatMonth(mese)}
+            </label>
+          ))}
+        </div>
+        {selectedMonths.length > 1 && (
+          <div className="mt-2 pt-2 border-t border-border">
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground w-full text-left px-2"
+              onClick={() => {
+                const last = [...availableMonths].sort().pop();
+                if (last) onMonthsChange([last]);
+              }}
+            >
+              Torna a singolo mese
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function Layout({
-  children, selectedMonth, availableMonths, onMonthChange,
+  children, selectedMonth, selectedMonths, availableMonths, onMonthsChange,
   onUpload, onConfirmUpload, hasGiacenza, onReset, onLogout,
-  userName, userRole, isAdmin, records, hasGiacenzaProp, allMonths
+  userName, userRole, isAdmin, records, hasGiacenzaProp, allMonths, tpAnagrafica,
 }: LayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -120,7 +189,6 @@ export default function Layout({
     }
   }, [onUpload, uploading]);
 
-  // PERF: wrap in useCallback to prevent Dialog from re-rendering when unrelated state changes
   const handleConfirm = useCallback(() => {
     onConfirmUpload(pendingCsv);
     setConfirmDialog(false);
@@ -250,16 +318,11 @@ export default function Layout({
         <div className="sticky top-0 lg:top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
             {availableMonths.length > 0 && (
-              <Select value={selectedMonth} onValueChange={onMonthChange}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Seleziona mese" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableMonths.map(m => (
-                    <SelectItem key={m} value={m}>{formatMonth(m)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MonthMultiSelect
+                availableMonths={availableMonths}
+                selectedMonths={selectedMonths}
+                onMonthsChange={onMonthsChange}
+              />
             )}
             {hasGiacenza ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-category-a/10 category-a">
@@ -306,6 +369,7 @@ export default function Layout({
         selectedMonth={selectedMonth}
         hasGiacenza={hasGiacenzaProp}
         allMonths={allMonths}
+        tpAnagrafica={tpAnagrafica}
       />
     </div>
   );

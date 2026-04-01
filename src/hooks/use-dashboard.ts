@@ -12,9 +12,20 @@ function formatEuro(n: number): string {
 export function useDashboard() {
   const [store, setStore] = useState<DashboardStore>({ months: [] });
   const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedMonths, setSelectedMonthsState] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [tpAnagrafica, setTPAnagrafica] = useState<TPAnagrafica[]>([]);
   const [tpCountByRapp, setTPCountByRapp] = useState<Map<string, number>>(new Map());
+
+  const setSelectedMonths = useCallback((months: string[]) => {
+    setSelectedMonthsState(months);
+    if (months.length > 0) {
+      const sorted = [...months].sort();
+      setSelectedMonth(sorted[sorted.length - 1]);
+    } else {
+      setSelectedMonth("");
+    }
+  }, []);
 
   // Initialize from Supabase on mount
   useEffect(() => {
@@ -30,7 +41,11 @@ export function useDashboard() {
         if (!cancelled) setTPCountByRapp(map);
       });
       const months = s.months.map(m => m.mese);
-      if (months.length > 0) setSelectedMonth(months[months.length - 1]);
+      if (months.length > 0) {
+        const last = months[months.length - 1];
+        setSelectedMonth(last);
+        setSelectedMonthsState([last]);
+      }
       setLoading(false);
     }).catch(err => {
       console.error("[useDashboard] init error:", err);
@@ -51,6 +66,12 @@ export function useDashboard() {
       if (months.length > 0 && !months.includes(prev)) return months[months.length - 1];
       if (months.length === 0) return "";
       return prev;
+    });
+    setSelectedMonthsState(prev => {
+      const valid = prev.filter(m => months.includes(m));
+      if (valid.length > 0) return valid;
+      if (months.length > 0) return [months[months.length - 1]];
+      return [];
     });
   }, []);
 
@@ -114,6 +135,12 @@ export function useDashboard() {
       if (months.length === 0) return "";
       return prev;
     });
+    setSelectedMonthsState(prev => {
+      const valid = prev.filter(m => months.includes(m));
+      if (valid.length > 0) return valid;
+      if (months.length > 0) return [months[months.length - 1]];
+      return [];
+    });
   }, []);
 
   const currentMonthData: MonthData | undefined = useMemo(
@@ -142,12 +169,15 @@ export function useDashboard() {
     setTPAnagrafica([]);
     setTPCountByRapp(new Map());
     setSelectedMonth("");
+    setSelectedMonthsState([]);
   }, []);
 
   return {
     store,
     selectedMonth,
     setSelectedMonth,
+    selectedMonths,
+    setSelectedMonths,
     uploadCSV,
     confirmUpload,
     currentMonthData,

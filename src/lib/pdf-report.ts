@@ -1,7 +1,8 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { TPWithMetrics, MonthData } from "@/types/dashboard";
-import { enrichRecords, formatCurrency, formatPercent, formatMonth, calcSTR, calcCategory, calcTrend } from "./calculations";import { MonthData } from "@/types/dashboard";
+import { formatCurrency, formatPercent, formatMonth } from "./calculations";
+import { TPAnagrafica } from "@/lib/store";
 
 // Colors
 const COLOR_A: [number, number, number] = [34, 197, 94];   // #22c55e
@@ -26,7 +27,7 @@ function trendLabel(t: string): string {
   return "—";
 }
 
-function addFooter(doc: jsPDF, footerText: string, mese: string) {
+function addFooter(doc: jsPDF, footerText: string, meseLabel: string) {
   const pageCount = (doc as any).internal?.getNumberOfPages?.() ?? 1;
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -35,12 +36,12 @@ function addFooter(doc: jsPDF, footerText: string, mese: string) {
     doc.setFontSize(8);
     doc.setTextColor(...COLOR_GRAY);
     doc.text(`${i} / ${pageCount}`, w / 2, h - 8, { align: "center" });
-    doc.text(formatMonth(mese), 14, h - 8);
+    doc.text(meseLabel, 14, h - 8);
     doc.text(footerText, w - 14, h - 8, { align: "right" });
   }
 }
 
-function addHeader(doc: jsPDF, title: string, mese: string) {
+function addHeader(doc: jsPDF, title: string, meseLabel: string) {
   const w = doc.internal.pageSize.getWidth();
   // Logo placeholder
   doc.setFillColor(...COLOR_PRIMARY);
@@ -57,7 +58,7 @@ function addHeader(doc: jsPDF, title: string, mese: string) {
   // Subtitle
   doc.setFontSize(10);
   doc.setTextColor(...COLOR_GRAY);
-  doc.text(`Mese: ${formatMonth(mese)}`, 60, 27);
+  doc.text(`Periodo: ${meseLabel}`, 60, 27);
   const now = new Date();
   doc.text(`Generato il ${now.toLocaleDateString("it-IT")}`, w - 14, 27, { align: "right" });
 
@@ -183,11 +184,20 @@ function getBestHistoricMonth(tpId: string, allMonths: MonthData[]): { mese: str
   return best;
 }
 
+function buildMeseLabel(selectedMonth: string | string[]): string {
+  if (typeof selectedMonth === "string") return formatMonth(selectedMonth);
+  if (selectedMonth.length === 0) return "";
+  if (selectedMonth.length === 1) return formatMonth(selectedMonth[0]);
+  const sorted = [...selectedMonth].sort();
+  return `${formatMonth(sorted[0])} — ${formatMonth(sorted[sorted.length - 1])}`;
+}
+
 export function generateReport(
   records: TPWithMetrics[],
-  selectedMonth: string,
+  selectedMonth: string | string[],
   hasGiacenza: boolean,
   allMonths: MonthData[],
+  tpAnagrafica: TPAnagrafica[],
   filterRep?: string
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -199,9 +209,15 @@ export function generateReport(
   const footerText = filterRep
     ? `Como 1907 — Report ${filterRep}`
     : "Como 1907 — Touchpoint Network Report";
+  const meseLabel = buildMeseLabel(selectedMonth);
+
+  // Determine the primary mese string for footer/historic lookups (last month)
+  const primaryMese = typeof selectedMonth === "string"
+    ? selectedMonth
+    : [...selectedMonth].sort().pop() ?? "";
 
   // 1. Header
-  addHeader(doc, title, selectedMonth);
+  addHeader(doc, title, meseLabel);
 
   // 2. KPI Scorecard
   let y = addKPIScorecard(doc, 38, filtered, hasGiacenza);
@@ -209,11 +225,11 @@ export function generateReport(
   // 3. Top 20 bar chart
   const top20 = [...filtered].sort((a, b) => b.venduto_euro - a.venduto_euro).slice(0, 20);
   const barData = top20.map(r => ({ nome: r.tp_nome, fatturato: r.venduto_euro, categoria: r.categoria }));
-  y = addBarChart(doc, y + 4, barData, filterRep ? "Top 20 TP per Fatturato" : "Top 20 TP per Fatturato Mensile");
+  y = addBarChart(doc, y + 4, barData, filterRep ? "Top 20 TP per Fatturato" : "Top 20 TP per Fatturato");
 
   // 4. Top 10 by revenue table
   doc.addPage();
-  addHeader(doc, title, selectedMonth);
+  addHeader(doc, title, meseLabel);
   const top10Rev = [...filtered].sort((a, b) => b.venduto_euro - a.venduto_euro).slice(0, 10);
 
   doc.setFontSize(11);
@@ -250,54 +266,10 @@ export function generateReport(
 
   let afterTable = ((doc as any).lastAutoTable?.finalY ?? 40) + 10;
 
-  // 5. Top 10 by STR
-  if (hasGiacenza) {
-    const top10Str = [...filtered].filter(r => r.str !== null).sort((a, b) => b.str! - a.str!).slice(0, 10);
-    if (afterTable > 220) { doc.addPage(); addHeader(doc, title, selectedMonth); afterTable = 40; }
-
-    doc.setFontSize(11);
-    doc.setTextColor(...COLOR_DARK);
-    doc.text("Top 10 TP per STR", 14, afterTable);
-
-    const strHeaders = filterRep
-      ? [["#", "Nome TP", "Tipo", "STR%", "Cat. ABC"]]
-      : [["#", "Nome TP", "Tipo", "Rappresentante", "STR%", "Cat. ABC"]];
-    const strBody = top10Str.map((r, i) => {
-      return [`${i + 1}`, r.tp_nome, r.tp_tipo, ...(filterRep ? [] : [r.rappresentante]), formatPercent(r.str), r.categoria || "N/D"];
-    });
-
-    autoTable(doc, {
-      startY: afterTable + 4,
-      head: strHeaders,
-      body: strBody,
-      styles: { fontSize: 9, cellPadding: 2 },
-      headStyles: { fillColor: COLOR_PRIMARY, textColor: [255, 255, 255] },
-      didParseCell(data) {
-        if (data.section === "body") {
-          const catIdx = filterRep ? 4 : 5;
-          if (data.column.index === catIdx) {
-            const val = String(data.cell.raw ?? "");
-            if (val === "A") data.cell.styles.textColor = COLOR_A;
-            else if (val === "B") data.cell.styles.textColor = COLOR_B;
-            else if (val === "C") data.cell.styles.textColor = COLOR_C;
-            data.cell.styles.fontStyle = "bold";
-          }
-        }
-      },
-    });
-    afterTable = ((doc as any).lastAutoTable?.finalY ?? 40) + 10;
-  } else {
-    if (afterTable > 240) { doc.addPage(); addHeader(doc, title, selectedMonth); afterTable = 40; }
-    doc.setFontSize(9);
-    doc.setTextColor(...COLOR_GRAY);
-    doc.text("STR non disponibile — giacenza non caricata", 14, afterTable);
-    afterTable += 8;
-  }
-
-  // 6. Rep comparison (only for general report)
+  // 5. Rep comparison (only for general report)
   if (!filterRep) {
     doc.addPage();
-    addHeader(doc, title, selectedMonth);
+    addHeader(doc, title, meseLabel);
     doc.setFontSize(11);
     doc.setTextColor(...COLOR_DARK);
     doc.text("Confronto Rappresentanti", 14, 40);
@@ -318,7 +290,7 @@ export function generateReport(
     afterTable = ((doc as any).lastAutoTable?.finalY ?? 40) + 10;
   }
 
-  // 7. Dormant TPs (category C)
+  // 6. Dormant TPs (category C)
   const dormant = [...filtered].filter(r => r.categoria === "C").sort((a, b) => {
     const bestA = getBestHistoricMonth(a.tp_id, allMonths);
     const bestB = getBestHistoricMonth(b.tp_id, allMonths);
@@ -326,7 +298,7 @@ export function generateReport(
   });
 
   if (dormant.length > 0) {
-    if (afterTable > 200 || filterRep) { doc.addPage(); addHeader(doc, title, selectedMonth); afterTable = 40; }
+    if (afterTable > 200 || filterRep) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
 
     doc.setFontSize(11);
     doc.setTextColor(...COLOR_DARK);
@@ -358,13 +330,45 @@ export function generateReport(
     afterTable = ((doc as any).lastAutoTable?.finalY ?? 40) + 10;
   }
 
+  // 7. TP Inattivi (in anagrafica but no sales in period)
+  const activeIds = new Set(filtered.filter(r => r.venduto_euro > 0).map(r => r.tp_id));
+  const anaFiltered = filterRep
+    ? tpAnagrafica.filter(tp => tp.rappresentante === filterRep)
+    : tpAnagrafica;
+  const inactiveTP = anaFiltered.filter(tp => !activeIds.has(tp.tp_id));
+
+  if (inactiveTP.length > 0) {
+    if (afterTable > 180) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
+
+    doc.setFontSize(11);
+    doc.setTextColor(...COLOR_DARK);
+    doc.text(`TP Inattivi nel periodo — ${inactiveTP.length} su ${anaFiltered.length}`, 14, afterTable);
+
+    const inactiveHeaders = filterRep
+      ? [["Nome TP"]]
+      : [["Nome TP", "Rappresentante"]];
+    const inactiveBody = inactiveTP.map(tp => filterRep
+      ? [tp.tp_nome]
+      : [tp.tp_nome, tp.rappresentante || "N/D"]
+    );
+
+    autoTable(doc, {
+      startY: afterTable + 4,
+      head: inactiveHeaders,
+      body: inactiveBody,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: COLOR_GRAY, textColor: [255, 255, 255] },
+    });
+    afterTable = ((doc as any).lastAutoTable?.finalY ?? 40) + 10;
+  }
+
   // 8. Improved / Worsened (rep report only)
   if (filterRep) {
     const improved = filtered.filter(r => r.trend === "up");
     const worsened = filtered.filter(r => r.trend === "down");
 
     if (improved.length > 0 || worsened.length > 0) {
-      if (afterTable > 200) { doc.addPage(); addHeader(doc, title, selectedMonth); afterTable = 40; }
+      if (afterTable > 200) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
 
       if (improved.length > 0) {
         doc.setFontSize(11);
@@ -382,7 +386,7 @@ export function generateReport(
       }
 
       if (worsened.length > 0) {
-        if (afterTable > 240) { doc.addPage(); addHeader(doc, title, selectedMonth); afterTable = 40; }
+        if (afterTable > 240) { doc.addPage(); addHeader(doc, title, meseLabel); afterTable = 40; }
         doc.setFontSize(11);
         doc.setTextColor(...COLOR_C);
         doc.text("⬇ TP Peggiorati", 14, afterTable);
@@ -399,12 +403,15 @@ export function generateReport(
   }
 
   // Footer on all pages
-  addFooter(doc, footerText, selectedMonth);
+  addFooter(doc, footerText, meseLabel);
 
   // Save
   const safeName = filterRep ? filterRep.toLowerCase().replace(/\s+/g, "-") : "touchpoint";
+  const safeMonth = typeof selectedMonth === "string"
+    ? selectedMonth
+    : [...selectedMonth].sort().join("_");
   const fileName = filterRep
-    ? `report_${safeName}_${selectedMonth}.pdf`
-    : `report_touchpoint_${selectedMonth}.pdf`;
+    ? `report_${safeName}_${safeMonth}.pdf`
+    : `report_touchpoint_${safeMonth}.pdf`;
   doc.save(fileName);
 }

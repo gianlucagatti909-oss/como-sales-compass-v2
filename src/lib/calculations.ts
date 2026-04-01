@@ -67,3 +67,47 @@ export function formatMonth(mese: string): string {
   const months = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
   return `${months[parseInt(m) - 1]} ${y}`;
 }
+
+export function aggregateMultiMonthRecords(
+  allMonths: MonthData[],
+  selectedMonths: string[]
+): { records: TPWithMetrics[]; hasGiacenza: boolean } {
+  let hasGiacenza = false;
+  const tpMap = new Map<string, { euro: number; pezzi: number; strSum: number; strCount: number; base: TPWithMetrics }>();
+
+  const sorted = [...selectedMonths].sort();
+  for (const mese of sorted) {
+    const monthData = allMonths.find(m => m.mese === mese);
+    if (!monthData) continue;
+    if (monthData.hasGiacenza) hasGiacenza = true;
+    const monthIdx = allMonths.findIndex(m => m.mese === mese);
+    const prev = monthIdx > 0 ? allMonths[monthIdx - 1] : undefined;
+    const enriched = enrichRecords(monthData, prev);
+    for (const r of enriched) {
+      const entry = tpMap.get(r.tp_id);
+      if (entry) {
+        entry.euro += r.venduto_euro;
+        entry.pezzi += r.venduto_pezzi;
+        if (r.str !== null) { entry.strSum += r.str; entry.strCount++; }
+        entry.base = r;
+      } else {
+        tpMap.set(r.tp_id, {
+          euro: r.venduto_euro,
+          pezzi: r.venduto_pezzi,
+          strSum: r.str ?? 0,
+          strCount: r.str !== null ? 1 : 0,
+          base: r,
+        });
+      }
+    }
+  }
+
+  const records: TPWithMetrics[] = [...tpMap.values()].map(({ euro, pezzi, strSum, strCount, base }) => ({
+    ...base,
+    venduto_euro: euro,
+    venduto_pezzi: pezzi,
+    str: strCount > 0 ? strSum / strCount : null,
+  }));
+
+  return { records, hasGiacenza };
+}

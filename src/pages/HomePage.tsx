@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { TPWithMetrics, MonthData } from "@/types/dashboard";
 import { formatCurrency, formatPercent, formatMonth, enrichRecords } from "@/lib/calculations";
 import EmptyState from "@/components/EmptyState";
-import { DollarSign, Store, TrendingDown, Percent, Package, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import { DollarSign, Store, Percent, Package, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import {
-  BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line,
+  BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend, Area, AreaChart
 } from "recharts";
 
@@ -13,6 +13,7 @@ interface Props {
   records: TPWithMetrics[];
   hasGiacenza: boolean;
   selectedMonth: string;
+  selectedMonths: string[];
   allMonths: MonthData[];
   totalTPAnagrafica: number;
 }
@@ -60,8 +61,9 @@ const chartTooltipStyle = {
   color: "hsl(var(--card-foreground))",
 };
 
-export default function HomePage({ records, hasGiacenza, selectedMonth, allMonths, totalTPAnagrafica }: Props) {
+export default function HomePage({ records, hasGiacenza, selectedMonth, selectedMonths, allMonths, totalTPAnagrafica }: Props) {
   const navigate = useNavigate();
+  const isMultiMonth = selectedMonths.length > 1;
 
   // Revenue trend (all months)
   const trendData = useMemo(() => allMonths.map(m => {
@@ -154,7 +156,12 @@ export default function HomePage({ records, hasGiacenza, selectedMonth, allMonth
       <div>
         <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          {selectedMonth ? `Dati al ${formatMonth(selectedMonth)}` : "Carica un CSV per iniziare"}
+          {isMultiMonth
+            ? (() => {
+                const sorted = [...selectedMonths].sort();
+                return `Aggregato: ${formatMonth(sorted[0])} — ${formatMonth(sorted[sorted.length - 1])}`;
+              })()
+            : selectedMonth ? `Dati al ${formatMonth(selectedMonth)}` : "Carica un CSV per iniziare"}
         </p>
       </div>
 

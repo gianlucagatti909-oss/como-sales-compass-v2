@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useAuth } from "@/hooks/use-auth";
 import { migrateFromLocalStorage } from "@/lib/migrate-localStorage";
+import { aggregateMultiMonthRecords } from "@/lib/calculations";
 import Layout from "@/components/DashboardLayout";
 import LoginPage from "@/pages/LoginPage";
 import HomePage from "@/pages/HomePage";
@@ -69,7 +70,8 @@ function DashboardApp() {
 
   const { user, login, logout, loading: authLoading } = useAuth();
   const {
-    selectedMonth, setSelectedMonth, uploadCSV, confirmUpload,
+    selectedMonth, selectedMonths, setSelectedMonths,
+    uploadCSV, confirmUpload,
     enrichedRecords, hasGiacenza, availableMonths, resetData, allMonths, refresh,
     loading: dashLoading, tpCountByRapp, tpAnagrafica,
   } = useDashboard();
@@ -95,7 +97,8 @@ function DashboardApp() {
     isAdmin={user.role === "admin"}
     filteredRecords={filteredRecords}
     selectedMonth={selectedMonth}
-    setSelectedMonth={setSelectedMonth}
+    selectedMonths={selectedMonths}
+    setSelectedMonths={setSelectedMonths}
     uploadCSV={uploadCSV}
     confirmUpload={confirmUpload}
     hasGiacenza={hasGiacenza}
@@ -111,7 +114,7 @@ function DashboardApp() {
 
 // Separate component to allow hooks to run after user is known
 function DashboardContent({
-  user, isAdmin, filteredRecords, selectedMonth, setSelectedMonth,
+  user, isAdmin, filteredRecords, selectedMonth, selectedMonths, setSelectedMonths,
   uploadCSV, confirmUpload, hasGiacenza, availableMonths, resetData,
   allMonths, refresh, logout, tpAnagrafica, tpCountByRapp,
 }: {
@@ -119,7 +122,8 @@ function DashboardContent({
   isAdmin: boolean;
   filteredRecords: ReturnType<typeof useDashboard>["enrichedRecords"];
   selectedMonth: string;
-  setSelectedMonth: (m: string) => void;
+  selectedMonths: string[];
+  setSelectedMonths: (months: string[]) => void;
   uploadCSV: ReturnType<typeof useDashboard>["uploadCSV"];
   confirmUpload: ReturnType<typeof useDashboard>["confirmUpload"];
   hasGiacenza: boolean;
@@ -137,25 +141,53 @@ function DashboardContent({
     return [...set].sort();
   }, [allMonths]);
 
+  // Aggregated records for multi-month dashboard view
+  const { records: multiMonthRecords, hasGiacenza: multiHasGiacenza } = useMemo(() => {
+    if (selectedMonths.length <= 1) {
+      return { records: filteredRecords, hasGiacenza };
+    }
+    const { records: aggRecords, hasGiacenza: aggHasGiacenza } = aggregateMultiMonthRecords(allMonths, selectedMonths);
+    // Apply same rep filter
+    const repFiltered = user.role === "admin"
+      ? aggRecords
+      : aggRecords.filter(r => r.rappresentante === user.rappresentante);
+    return { records: repFiltered, hasGiacenza: aggHasGiacenza };
+  }, [selectedMonths, filteredRecords, allMonths, hasGiacenza, user]);
+
+  const totalTPAnagrafica = user.role === "admin"
+    ? tpAnagrafica.length
+    : tpAnagrafica.filter(tp => tp.rappresentante === user.rappresentante).length;
+
   return (
     <Layout
       selectedMonth={selectedMonth}
+      selectedMonths={selectedMonths}
       availableMonths={availableMonths}
-      onMonthChange={setSelectedMonth}
+      onMonthsChange={setSelectedMonths}
       onUpload={uploadCSV}
       onConfirmUpload={confirmUpload}
-      hasGiacenza={hasGiacenza}
+      hasGiacenza={selectedMonths.length <= 1 ? hasGiacenza : multiHasGiacenza}
       onReset={resetData}
       onLogout={logout}
       userName={user.displayName}
       userRole={user.role}
       isAdmin={isAdmin}
       records={filteredRecords}
-      hasGiacenzaProp={hasGiacenza}
+      hasGiacenzaProp={selectedMonths.length <= 1 ? hasGiacenza : multiHasGiacenza}
       allMonths={allMonths}
+      tpAnagrafica={tpAnagrafica}
     >
       <Routes>
-        <Route path="/" element={<HomePage records={filteredRecords} hasGiacenza={hasGiacenza} selectedMonth={selectedMonth} allMonths={allMonths} totalTPAnagrafica={user.role === "admin" ? tpAnagrafica.length : tpAnagrafica.filter(tp => tp.rappresentante === user.rappresentante).length} />} />
+        <Route path="/" element={
+          <HomePage
+            records={multiMonthRecords}
+            hasGiacenza={selectedMonths.length <= 1 ? hasGiacenza : multiHasGiacenza}
+            selectedMonth={selectedMonth}
+            selectedMonths={selectedMonths}
+            allMonths={allMonths}
+            totalTPAnagrafica={totalTPAnagrafica}
+          />
+        } />
         <Route path="/touchpoints" element={<TPListPage records={filteredRecords} hasGiacenza={hasGiacenza} />} />
         <Route path="/touchpoints/:id" element={<TPDetailPage hasGiacenza={hasGiacenza} allMonths={allMonths} />} />
         <Route path="/rappresentanti" element={
